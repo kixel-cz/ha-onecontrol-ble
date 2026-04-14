@@ -6,6 +6,7 @@
   "issue_tracker": "https://github.com/alexejsidorenko/ha-onecontrol-ble/issues",
   "requirements": [
     "bleak>=0.21.0",
+    "bleak-retry-connector>=3.0.0",
     "pycryptodome>=3.19.0",
     "cryptography>=41.0.0"
   ],
@@ -16,7 +17,11 @@
   ],
   "config_flow": true,
   "iot_class": "local_push",
-  "dependencies": ["bluetooth"],
-  "codeowners": ["@alexejsidorenko"],
+  "dependencies": [
+    "bluetooth"
+  ],
+  "codeowners": [
+    "@alexejsidorenko"
+  ],
   "quality_scale": "custom"
 }

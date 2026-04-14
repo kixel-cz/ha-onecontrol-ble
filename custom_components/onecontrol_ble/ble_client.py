@@ -1,10 +1,11 @@
-"""1Control SoloMini — async BLE client s fragmentací."""
+"""1Control SoloMini — async BLE client."""
 from __future__ import annotations
 import asyncio, logging, os
 from typing import Optional, Callable
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
+from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 
 from .protocol import (
     SecurityData, TX_CHAR_UUID, RX_CHAR_UUID,
@@ -18,24 +19,17 @@ _LOGGER = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT  = 20.0
 RESPONSE_TIMEOUT = 10.0
-MAX_RETRIES      = 3
-BLE_MTU_REQUEST  = 128  # požadovaná MTU — pokud zařízení souhlasí, vejde se vše
-FRAG_PAYLOAD     = 17   # max data bytů na fragment (20B MTU - 3B header)
+BLE_MTU_REQUEST  = 128
+FRAG_PAYLOAD     = 17   # 20B MTU - 3B header
 
 
 def _fragment(data: bytes) -> list[bytes]:
-    """
-    Rozdělí velký paket na BLE fragmenty po 20 bytů.
-    Formát z Tlv.java:
-      [0x04][total_len][seq] + data_chunk   (mezifragment)
-      [0x05][total_len][seq] + data_chunk   (poslední fragment)
-    """
+    """Fragmentace velkých paketů per Tlv.java."""
     total = len(data)
     chunks = [data[i:i+FRAG_PAYLOAD] for i in range(0, total, FRAG_PAYLOAD)]
     frags = []
     for seq, chunk in enumerate(chunks):
-        is_last = (seq == len(chunks) - 1)
-        ftype = 0x05 if is_last else 0x04
+        ftype = 0x05 if seq == len(chunks) - 1 else 0x04
         frags.append(bytes([ftype, total, seq]) + chunk)
     return frags
 
@@ -50,34 +44,46 @@ class SoloMiniClient:
         self.action     = action
         self._on_paired = on_paired
         self._responses: asyncio.Queue[bytes] = asyncio.Queue()
+        self._lock = asyncio.Lock()  # zabrání paralelním pokusům
 
     async def open_gate(self, action: Optional[int] = None) -> bool:
-        for attempt in range(1, MAX_RETRIES + 1):
+        if self._lock.locked():
+            _LOGGER.warning("BLE operation already in progress, skipping")
+            return False
+        async with self._lock:
             try:
                 return await self._do_connect()
-            except (BleakError, asyncio.TimeoutError, Exception) as exc:
-                _LOGGER.warning("Attempt %d/%d failed: %s", attempt, MAX_RETRIES, exc)
-                if attempt < MAX_RETRIES:
-                    await asyncio.sleep(2.0)
-        return False
+            except Exception as exc:
+                _LOGGER.error("Gate open failed: %s", exc)
+                return False
 
     async def _do_connect(self) -> bool:
         while not self._responses.empty():
             self._responses.get_nowait()
 
-        async with BleakClient(self.address, timeout=CONNECT_TIMEOUT) as client:
+        _LOGGER.debug("Connecting to %s", self.address)
 
-            # Negotiate větší MTU — pokud uspěje, fragmentace není potřeba
+        # Použij bleak-retry-connector pro spolehlivé připojení
+        client = await establish_connection(
+            BleakClientWithServiceCache,
+            self.address,
+            name=self.address,
+            max_attempts=3,
+        )
+
+        try:
+            # MTU negotiation
+            mtu = 23
             try:
                 await client.request_mtu(BLE_MTU_REQUEST)
                 mtu = getattr(client, 'mtu_size', 23)
-                _LOGGER.debug("Connected, MTU=%d", mtu)
+                _LOGGER.debug("MTU=%d", mtu)
             except Exception:
-                mtu = 23
-                _LOGGER.debug("MTU negotiation not supported, using default %d", mtu)
+                _LOGGER.debug("MTU negotiation not supported, using %d", mtu)
 
             await client.start_notify(RX_CHAR_UUID, self._on_notify)
 
+            # Pairing pokud nemáme LTK
             if self.security is None:
                 sec = await self._do_pairing(client, mtu)
                 if sec is None:
@@ -86,7 +92,7 @@ class SoloMiniClient:
                 if self._on_paired:
                     self._on_paired(sec)
 
-            # StartSession (12B — vejde se vždy)
+            # StartSession
             random_a = os.urandom(8)
             await self._write(client, build_start_session(random_a), mtu)
             resp = await self._wait()
@@ -106,7 +112,7 @@ class SoloMiniClient:
             _LOGGER.debug("Greeting CC=%d", cc)
             self.security.session_id = session_id
 
-            # Open (17B — vejde se vždy)
+            # Open
             open_pkt = build_open_command(
                 self.security.session_key, self.security.session_id,
                 cc, self.security.user_id, self.action,
@@ -119,26 +125,27 @@ class SoloMiniClient:
                     _LOGGER.warning("NACK: %s", ack.hex())
                     return False
             except asyncio.TimeoutError:
-                pass  # SoloMini neposílá ACK pro open
+                pass  # normální — SoloMini neposílá ACK pro open
 
             self.security.last_cc = cc + 1
             _LOGGER.info("Gate opened (action=%d)", self.action)
             return True
 
+        finally:
+            await client.disconnect()
+
     async def _do_pairing(self, client: BleakClient, mtu: int) -> Optional[SecurityData]:
         priv, pub = generate_ec_keypair()
-        pub64 = pubkey_to_64b(pub)
-        pkt = build_start_pairing(pub64)
-
+        pkt = build_start_pairing(pubkey_to_64b(pub))
         _LOGGER.debug("TX StartPairing (%dB)", len(pkt))
-        await self._write(client, pkt, mtu)
 
+        await self._write(client, pkt, mtu)
         resp = await self._wait()
-        _LOGGER.debug("RX StartPairing resp (%dB): %s", len(resp), resp.hex())
+        _LOGGER.debug("RX StartPairing (%dB): %s", len(resp), resp.hex())
 
         device_pub64 = parse_start_pairing_response(resp)
         if not device_pub64:
-            _LOGGER.error("Bad StartPairing response: %s", resp.hex())
+            _LOGGER.error("Bad pairing response: %s", resp.hex())
             return None
 
         ltk = ecdh_ltk(priv, device_pub64)
@@ -151,18 +158,13 @@ class SoloMiniClient:
         return SecurityData(ltk=ltk, private_key_pem=pem, user_id=0)
 
     async def _write(self, client: BleakClient, data: bytes, mtu: int = 23) -> None:
-        """Zapíše data — pokud je větší než MTU, fragmentuje."""
         max_payload = mtu - 3
         if len(data) <= max_payload:
-            # Vejde se do jednoho paketu
             await client.write_gatt_char(TX_CHAR_UUID, data, response=False)
         else:
-            # Fragmentace
-            frags = _fragment(data)
-            _LOGGER.debug("Fragmenting %dB into %d fragments", len(data), len(frags))
-            for frag in frags:
+            for frag in _fragment(data):
                 await client.write_gatt_char(TX_CHAR_UUID, frag, response=False)
-                await asyncio.sleep(0.05)  # krátká pauza mezi fragmenty
+                await asyncio.sleep(0.05)
 
     def _on_notify(self, _: BleakGATTCharacteristic, data: bytearray) -> None:
         _LOGGER.debug("RX: %s", bytes(data).hex())
