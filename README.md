@@ -1,4 +1,4 @@
-# 1Control SoloMini BLE for Home Assistant
+# 1Control SoloMini BLE for Home Assistant - work in progress, it's not working yet!
 
 [![HACS Custom][hacs-badge]][hacs-url]
 [![License: MIT][license-badge]][license-url]
