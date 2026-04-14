@@ -5,7 +5,6 @@ from typing import Optional, Callable
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
-from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 
 from .protocol import (
     SecurityData, TX_CHAR_UUID, RX_CHAR_UUID,
@@ -20,11 +19,10 @@ _LOGGER = logging.getLogger(__name__)
 CONNECT_TIMEOUT  = 20.0
 RESPONSE_TIMEOUT = 10.0
 BLE_MTU_REQUEST  = 128
-FRAG_PAYLOAD     = 17   # 20B MTU - 3B header
+FRAG_PAYLOAD     = 17
 
 
 def _fragment(data: bytes) -> list[bytes]:
-    """Fragmentace velkých paketů per Tlv.java."""
     total = len(data)
     chunks = [data[i:i+FRAG_PAYLOAD] for i in range(0, total, FRAG_PAYLOAD)]
     frags = []
@@ -44,7 +42,7 @@ class SoloMiniClient:
         self.action     = action
         self._on_paired = on_paired
         self._responses: asyncio.Queue[bytes] = asyncio.Queue()
-        self._lock = asyncio.Lock()  # zabrání paralelním pokusům
+        self._lock = asyncio.Lock()
 
     async def open_gate(self, action: Optional[int] = None) -> bool:
         if self._lock.locked():
@@ -63,16 +61,7 @@ class SoloMiniClient:
 
         _LOGGER.debug("Connecting to %s", self.address)
 
-        # Použij bleak-retry-connector pro spolehlivé připojení
-        client = await establish_connection(
-            BleakClientWithServiceCache,
-            self.address,
-            name=self.address,
-            max_attempts=3,
-        )
-
-        try:
-            # MTU negotiation
+        async with BleakClient(self.address, timeout=CONNECT_TIMEOUT) as client:
             mtu = 23
             try:
                 await client.request_mtu(BLE_MTU_REQUEST)
@@ -83,7 +72,6 @@ class SoloMiniClient:
 
             await client.start_notify(RX_CHAR_UUID, self._on_notify)
 
-            # Pairing pokud nemáme LTK
             if self.security is None:
                 sec = await self._do_pairing(client, mtu)
                 if sec is None:
@@ -92,7 +80,6 @@ class SoloMiniClient:
                 if self._on_paired:
                     self._on_paired(sec)
 
-            # StartSession
             random_a = os.urandom(8)
             await self._write(client, build_start_session(random_a), mtu)
             resp = await self._wait()
@@ -102,7 +89,6 @@ class SoloMiniClient:
                 return False
             self.security.update_session(random_a, random_b)
 
-            # Greeting
             greeting = await self._wait()
             parsed = parse_greeting(greeting)
             if not parsed:
@@ -112,7 +98,6 @@ class SoloMiniClient:
             _LOGGER.debug("Greeting CC=%d", cc)
             self.security.session_id = session_id
 
-            # Open
             open_pkt = build_open_command(
                 self.security.session_key, self.security.session_id,
                 cc, self.security.user_id, self.action,
@@ -125,32 +110,25 @@ class SoloMiniClient:
                     _LOGGER.warning("NACK: %s", ack.hex())
                     return False
             except asyncio.TimeoutError:
-                pass  # normální — SoloMini neposílá ACK pro open
+                pass
 
             self.security.last_cc = cc + 1
             _LOGGER.info("Gate opened (action=%d)", self.action)
             return True
 
-        finally:
-            await client.disconnect()
-
     async def _do_pairing(self, client: BleakClient, mtu: int) -> Optional[SecurityData]:
         priv, pub = generate_ec_keypair()
         pkt = build_start_pairing(pubkey_to_64b(pub))
         _LOGGER.debug("TX StartPairing (%dB)", len(pkt))
-
         await self._write(client, pkt, mtu)
         resp = await self._wait()
         _LOGGER.debug("RX StartPairing (%dB): %s", len(resp), resp.hex())
-
         device_pub64 = parse_start_pairing_response(resp)
         if not device_pub64:
             _LOGGER.error("Bad pairing response: %s", resp.hex())
             return None
-
         ltk = ecdh_ltk(priv, device_pub64)
         _LOGGER.info("Pairing OK, LTK=%s", ltk.hex())
-
         from cryptography.hazmat.primitives.serialization import (
             Encoding, PrivateFormat, NoEncryption,
         )
