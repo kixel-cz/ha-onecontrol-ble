@@ -1,0 +1,32 @@
+{
+  "title": "1Control SoloMini BLE",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add 1Control SoloMini",
+        "description": "Enter the BLE address of your SoloMini. Leave the LTK field empty — the integration will pair with the device automatically on first use.",
+        "data": {
+          "address": "BLE address",
+          "name": "Name",
+          "action": "Action number",
+          "ltk": "LTK key (optional)",
+          "user_id": "User ID (optional)",
+          "serial": "Serial number (optional)"
+        },
+        "data_description": {
+          "address": "BLE MAC address of the device, e.g. EF:73:A3:39:3B:E4",
+          "ltk": "Leave empty for automatic pairing.",
+          "action": "Action number for opening (default: 1)"
+        }
+      }
+    },
+    "error": {
+      "ltk_invalid": "LTK must be 32 hexadecimal characters (16 bytes).",
+      "cannot_connect": "Cannot connect to device. Check the BLE address and ensure the device is in range.",
+      "pairing_failed": "Pairing failed. Ensure the device is in pairing mode."
+    },
+    "abort": {
+      "already_configured": "Device is already configured."
+    }
+  }
+}

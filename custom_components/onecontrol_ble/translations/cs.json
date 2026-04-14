@@ -1,0 +1,43 @@
+{
+  "title": "1Control SoloMini BLE",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Přidat 1Control SoloMini",
+        "description": "Zadejte BLE adresu vašeho SoloMini. **Pole LTK nechte prázdné** — integrace zařízení spáruje automaticky při prvním použití.",
+        "data": {
+          "address": "BLE adresa",
+          "name": "Název",
+          "action": "Číslo akce",
+          "ltk": "LTK klíč (volitelné)",
+          "user_id": "User ID (volitelné)",
+          "serial": "Sériové číslo (volitelné)"
+        },
+        "data_description": {
+          "address": "MAC adresa BLE zařízení, např. EF:73:A3:39:3B:E4. Najdete ji v Bluetooth skeneru nebo v aplikaci 1Control.",
+          "ltk": "16-bajtový hex klíč. Nechte prázdné — integrace se zařízením spáruje automaticky při prvním otevření.",
+          "action": "Číslo akce pro otevření brány. Výchozí hodnota 1 funguje pro většinu zařízení."
+        }
+      }
+    },
+    "error": {
+      "ltk_invalid": "LTK musí mít přesně 32 hexadecimálních znaků (16 bajtů).",
+      "cannot_connect": "Nelze se připojit k zařízení. Zkontrolujte BLE adresu a ujistěte se, že je zařízení v dosahu.",
+      "pairing_failed": "Párování se nezdařilo. Ujistěte se, že je zařízení v párovacím módu, a zkuste to znovu."
+    },
+    "abort": {
+      "already_configured": "Toto zařízení je již nakonfigurováno."
+    }
+  },
+  "entity": {
+    "cover": {
+      "onecontrol_ble": {
+        "state": {
+          "open": "Otevřeno",
+          "closed": "Zavřeno",
+          "opening": "Otevírá se"
+        }
+      }
+    }
+  }
+}
