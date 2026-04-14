@@ -1,213 +1,165 @@
-# 1Control SoloMini BLE pro Home Assistant
+# 1Control SoloMini BLE for Home Assistant
 
 [![HACS Custom][hacs-badge]][hacs-url]
 [![License: MIT][license-badge]][license-url]
 [![HA Version][ha-badge]][ha-url]
 
-Lokální Home Assistant integrace pro garážové ovladače **1Control SoloMini RE** přes Bluetooth. Žádný cloud, žádná závislost na aplikaci 1Control — vše funguje přímo přes BLE.
+Local Home Assistant integration for **1Control SoloMini RE** garage door openers via Bluetooth. No cloud, no dependency on the 1Control app — everything works directly over BLE.
 
-> **Čeština / English:** This README is in Czech. [English version below.](#english)
+## Features
 
----
-
-## Funkce
-
-- ✅ Otevírání garážových vrat / brány jedním kliknutím
-- ✅ Automatické BLE párování — není potřeba žádný klíč ani účet
-- ✅ Zcela lokální provoz — bez cloudu, bez internetu
-- ✅ Funguje na Home Assistant s Bluetooth adaptérem (vestavěný nebo USB dongle)
-- ✅ Instalace přes HACS
+- ✅ Open garage door / gate with one tap
+- ✅ Automatic BLE pairing — no key or account needed
+- ✅ Fully local — no cloud, no internet required
+- ✅ Works with any HA Bluetooth adapter (built-in or USB dongle)
+- ✅ HACS installation
 
 ---
 
-## Požadavky
+## Installation via HACS
 
-- Home Assistant 2023.12 nebo novější
-- Bluetooth adaptér dostupný pro HA (vestavěný v Raspberry Pi, nebo USB dongle jako ASUS BT-500)
-- 1Control SoloMini RE v dosahu Bluetooth (obvykle do 10 m)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kixel-cz&repository=ha-onecontrol-ble&category=integration)
 
----
+Or manually:
 
-## Instalace přes HACS
-
-1. Otevřete **HACS** → **Integrace**
-2. Klikněte na ⋮ (tři tečky vpravo nahoře) → **Vlastní repozitáře**
-3. Zadejte URL: `https://github.com/alexejsidorenko/ha-onecontrol-ble`
-4. Kategorie: **Integrace** → **Přidat**
-5. Vyhledejte **1Control SoloMini BLE** a nainstalujte
-6. Restartujte Home Assistant
+1. Open **HACS** → **Integrations**
+2. Click ⋮ (top right) → **Custom repositories**
+3. URL: `https://github.com/kixel-cz/ha-onecontrol-ble`, Category: **Integration**
+4. Click **Add** → find **1Control SoloMini BLE** → **Install**
+5. Restart Home Assistant
 
 ---
 
-## Konfigurace
+## Configuration
 
-1. Přejděte do **Nastavení → Zařízení a služby → Přidat integraci**
-2. Vyhledejte **1Control SoloMini BLE**
-3. Vyplňte BLE adresu zařízení (např. `EF:73:A3:39:3B:E4`)
-4. Pole **LTK klíč nechte prázdné** — integrace se zařízením spáruje automaticky
-5. Klikněte **Odeslat**
+1. **Settings → Devices & Services → Add Integration**
+2. Search for **1Control SoloMini BLE**
+3. Enter the BLE address of your device (e.g. `EF:73:A3:39:3B:E4`)
+4. Leave the **LTK key empty** — the integration pairs automatically on first use
+5. Click **Submit**
 
-Po uložení se v HA vytvoří entita typu **Cover** (garážová vrata), kterou můžete přidat na dashboard nebo použít v automatizacích.
+A **Cover** entity is created which you can add to your dashboard or use in automations.
 
-### Kde najdu BLE adresu?
+### Where do I find the BLE address?
 
-- V aplikaci 1Control: detail zařízení → informace
-- Na štítku přímo na zařízení SoloMini
-- V HA: **Nastavení → Systém → Bluetooth** → seznam viditelných zařízení
+- In the 1Control app: device detail → info
+- On the label on the SoloMini device itself
+- In HA: **Settings → System → Bluetooth** → list of visible devices
 
-### Párování
+### Pairing
 
-Při prvním použití (stisk tlačítka **Otevřít** v HA) integrace automaticky:
+On first use (pressing **Open** in HA), the integration automatically:
 
-1. Vygeneruje kryptografický klíč (ECDH secp256r1)
-2. Spáruje se se zařízením přes BLE
-3. Uloží klíč — příště se připojí rovnou bez párování
+1. Generates a cryptographic keypair (ECDH secp256r1)
+2. Pairs with the device over BLE
+3. Saves the key — subsequent connections skip pairing
 
-Pokud párování selže, ujistěte se že SoloMini je v dosahu Bluetooth a že na zařízení není nastaven PIN omezující párování nových telefonů (výchozí stav je bez PINu).
+If pairing fails, make sure the SoloMini is in Bluetooth range and that no PIN is set on the device (default is no PIN).
 
 ---
 
-## Pokročilá konfigurace
+## Advanced configuration
 
-Pokud chcete zadat LTK klíč ručně (např. exportovaný z jiné instalace), zadejte ho jako 32 hexadecimálních znaků do pole **LTK klíč** při konfiguraci.
+If you want to provide an LTK key manually (e.g. exported from another installation), enter it as 32 hex characters in the **LTK key** field during setup.
 
-Pro extrakci LTK z cloudového účtu 1Control (pokud bylo zařízení spárováno přes cloudový účet) použijte skript `tools/extract_ltk.py`:
+To extract the LTK from a 1Control cloud account (if the device was paired via the cloud), use `tools/extract_ltk.py`:
 
 ```bash
 python3 tools/extract_ltk.py \
-  --email vas@email.cz \
-  --password vase_heslo \
+  --email your@email.com \
+  --password your_password \
   --serial 28524
 ```
 
 ---
 
-## Automatizace
-
-Příklad automatizace pro otevření brány při příjezdu domů:
+## Automation example
 
 ```yaml
 automation:
-  - alias: "Otevřít bránu při příjezdu"
+  - alias: "Open gate on arrival"
     trigger:
       - platform: zone
-        entity_id: person.ja
+        entity_id: person.me
         zone: zone.home
         event: enter
     action:
       - service: cover.open_cover
         target:
-          entity_id: cover.solumini_brana
+          entity_id: cover.solumini_gate
 ```
 
 ---
 
-## Řešení problémů
+## Troubleshooting
 
-| Problém | Řešení |
+| Issue | Solution |
 |---|---|
-| Zařízení není vidět v HA | Zkontrolujte Bluetooth adaptér v HA, restartujte integraci |
-| Párování selže | Ujistěte se že SoloMini je v dosahu a zkuste znovu |
-| Brána se neotevře po párování | Zkuste jiné číslo akce (0 místo 1) v nastavení integrace |
-| Integrace se odpojí | Normální chování — SoloMini BLE je wake-on-demand, připojuje se jen při akci |
+| Device not visible in HA | Check HA Bluetooth adapter, restart integration |
+| Pairing fails | Make sure SoloMini is in range and try again |
+| Gate doesn't open after pairing | Try action number 0 instead of 1 in integration settings |
+| Integration disconnects | Normal — SoloMini is wake-on-demand over BLE |
 
 ---
 
-## Technické detaily
+## Technical details
 
 <details>
-<summary>Protokol BLE (pro nadšence)</summary>
+<summary>BLE protocol (for enthusiasts)</summary>
 
-Integrace byla vytvořena reverse engineeringem aplikace `it.onecontrol.apk` v2.6.4.
+Reverse-engineered from `it.onecontrol.apk` v2.6.4.
 
-### BLE charakteristiky
+### BLE characteristics
 
-| UUID | Směr | Typ |
+| UUID | Direction | Type |
 |---|---|---|
-| `D973F2E1-B19E-11E2-9E96-0800200C9A66` | HA → zařízení | Write |
-| `D973F2E2-B19E-11E2-9E96-0800200C9A66` | zařízení → HA | Indicate |
+| `D973F2E1-B19E-11E2-9E96-0800200C9A66` | HA → device | Write |
+| `D973F2E2-B19E-11E2-9E96-0800200C9A66` | device → HA | Indicate |
 
-### Průběh komunikace
+### Communication flow
 
 ```
-1. PÁROVÁNÍ (jednou, výsledek se uloží):
-   HA → zařízení:  [00][42][90][01][phone_pubkey_64B]
-   zařízení → HA:  [device_pubkey_64B]
+1. PAIRING (once, result is saved):
+   HA → device:  [00][42][90][01][phone_pubkey_64B]
+   device → HA:  [device_pubkey_64B]
    LTK = SHA256(ECDH(phone_privkey, device_pubkey))[0:16]
 
-2. SESSION (každé připojení):
-   HA → zařízení:  [00][0A][90][02][randomA_8B]
-   zařízení → HA:  [randomB_8B]
+2. SESSION (every connection):
+   HA → device:  [00][0A][90][02][randomA_8B]
+   device → HA:  [randomB_8B]
    sessionID  = SHA256(randomA || randomB)[0:8]
    sessionKey = SHA256(LTK || sessionID)[0:16]
 
-3. GREETING (zařízení → HA, automaticky po připojení):
+3. GREETING (device → HA, sent on connect):
    [00][11][01][sessionID_8B][2B][userID_2B][CC_lo][CC_hi][00][00]
 
-4. OPEN (HA → zařízení):
-   nonce   = sessionID || CC+1 jako uint32 LE        (12 B)
-   aad     = [userID 2B] || [CC+1 uint32 LE] || [01] ( 7 B)
+4. OPEN (HA → device):
+   nonce   = sessionID || CC+1 as uint32 LE        (12 B)
+   aad     = [userID 2B] || [CC+1 uint32 LE] || [01] (7 B)
    CCM_out = AES-CCM-128(sessionKey, nonce, aad,
-               plaintext=action_2B, mac_len=6)        ( 8 B)
-   paket:  [00][0F][01][CCM_out_8B][userID_2B][CC+1_2B][00][00]
+               plaintext=action_2B, mac_len=6)       (8 B)
+   packet: [00][0F][01][CCM_out_8B][userID_2B][CC+1_2B][00][00]
 ```
 
-### Klíčové zdrojové soubory APK
+### Key APK source files
 
-| Soubor | Popis |
+| File | Description |
 |---|---|
 | `x2.java` | ECDH pairing worker |
-| `w2.java` | StartSession — derivace session klíče |
+| `w2.java` | StartSession — session key derivation |
 | `d9/e.java` | AES-CCM packet builder (`e.h()`) |
-| `d9/j.java` | SHA256 KDF helpery, ECDH funkce |
-| `StartPairingRequest.java` | Formát párovacího paketu |
-| `StartSessionRequest.java` | Formát session paketu |
-| `ControlSecurityRequest.java` | Základ všech šifrovaných příkazů |
+| `d9/j.java` | SHA256 KDF helpers, ECDH functions |
+| `StartPairingRequest.java` | Pairing packet format |
+| `StartSessionRequest.java` | Session packet format |
+| `ControlSecurityRequest.java` | Base class for all encrypted commands |
 
 </details>
 
 ---
 
-## Licence
+## License
 
-MIT — viz [LICENSE](LICENSE)
-
----
-
-<a name="english"></a>
-
-## English
-
-Local Home Assistant integration for **1Control SoloMini RE** garage door openers via Bluetooth. No cloud, no dependency on the 1Control app — everything works directly over BLE.
-
-### Features
-
-- ✅ Open garage door / gate with one tap
-- ✅ Automatic BLE pairing — no key or account needed
-- ✅ Fully local — no cloud, no internet required
-- ✅ Works with any HA Bluetooth adapter
-- ✅ HACS installation
-
-### Installation
-
-1. HACS → Integrations → ⋮ → Custom repositories
-2. URL: `https://github.com/alexejsidorenko/ha-onecontrol-ble`, Category: Integration
-3. Install **1Control SoloMini BLE** and restart HA
-4. Settings → Devices & Services → Add Integration → **1Control SoloMini BLE**
-5. Enter BLE address (e.g. `EF:73:A3:39:3B:E4`), leave LTK empty → Submit
-
-The integration pairs automatically on first use — no account or manual key extraction needed.
-
-### Troubleshooting
-
-| Issue | Solution |
-|---|---|
-| Device not visible | Check HA Bluetooth adapter, restart integration |
-| Pairing fails | Ensure SoloMini is in range and try again |
-| Gate doesn't open after pairing | Try action number 0 instead of 1 |
-| Integration disconnects | Normal — SoloMini is wake-on-demand over BLE |
-
----
+MIT — see [LICENSE](LICENSE)
 
 [hacs-badge]: https://img.shields.io/badge/HACS-Custom-orange.svg
 [hacs-url]: https://hacs.xyz
