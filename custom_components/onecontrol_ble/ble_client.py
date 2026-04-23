@@ -16,6 +16,7 @@ from .protocol import (
     derive_session,
     extract_response_cc,
     is_nack,
+    parse_greeting,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -55,17 +56,17 @@ class SoloMiniClient:
             while not q.empty():
                 q.get_nowait()
 
-            # 1. StartSession — required for BLE handshake
+            # 1. StartSession
             await client.write_gatt_char(
-                TX_CHAR_UUID, bytes([0x00, 0x0A, 0x90, 0x02]) + random_a, response=True
+                TX_CHAR_UUID,
+                bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
+                response=True,
             )
             resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
             _LOGGER.debug("Session: %s", resp.hex())
             our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
             # 2. Try stored last_cc first
-            #    If last_cc > current CC -> NACK, then probe
-            #    If last_cc < current CC -> current CC returned
             current_cc = self.security.last_cc
             _LOGGER.debug("Trying with last_cc=%d", current_cc)
 
@@ -92,7 +93,6 @@ class SoloMiniClient:
                     if resp_cc is None:
                         return False
                     _LOGGER.debug("Probe CC=%d", resp_cc)
-                    # Real open with current CC
                     pkt2 = build_open_command(
                         self.security.session_key,
                         self.security.session_id,
@@ -101,20 +101,12 @@ class SoloMiniClient:
                         self.action,
                     )
                     await client.write_gatt_char(TX_CHAR_UUID, pkt2, response=True)
-                    try:
-                        ack = await asyncio.wait_for(q.get(), timeout=3.0)
-                        if is_nack(ack):
-                            return False
-                        new_cc = extract_response_cc(ack) or resp_cc + 1
-                    except TimeoutError:
-                        new_cc = resp_cc + 1
+                    new_cc = await self._collect_response(q, resp_cc)
 
                 elif len(r) == 16:
-                    # Response — check CC in response
                     resp_cc = extract_response_cc(r)
                     if resp_cc is not None and resp_cc != current_cc + 1:
-                        # last_cc was too low — current CC returned
-                        # Use right CC
+                        # last_cc too low — got current CC
                         _LOGGER.debug("CC mismatch, retrying with CC=%d", resp_cc)
                         pkt3 = build_open_command(
                             self.security.session_key,
@@ -124,22 +116,58 @@ class SoloMiniClient:
                             self.action,
                         )
                         await client.write_gatt_char(TX_CHAR_UUID, pkt3, response=True)
-                        try:
-                            ack2 = await asyncio.wait_for(q.get(), timeout=3.0)
-                            if is_nack(ack2):
-                                return False
-                            new_cc = extract_response_cc(ack2) or resp_cc + 1
-                        except TimeoutError:
-                            new_cc = resp_cc + 1
+                        new_cc = await self._collect_response(q, resp_cc)
                     else:
-                        new_cc = resp_cc or current_cc + 1
+                        new_cc = await self._collect_response(q, current_cc, first=r)
                 else:
                     new_cc = current_cc + 1
 
             except TimeoutError:
                 new_cc = current_cc + 1
 
-            # Store current CC for next call
             self.security.last_cc = new_cc
-            _LOGGER.info("Gate opened! last_cc updated to %d", new_cc)
+            _LOGGER.info(
+                "Gate opened! last_cc=%d battery_raw=%s",
+                new_cc,
+                self.security.battery_raw,
+            )
             return True
+
+    async def _collect_response(
+        self,
+        q: asyncio.Queue[bytes],
+        last_cc: int,
+        first: bytes | None = None,
+    ) -> int:
+        new_cc = last_cc + 1
+        packets: list[bytes] = [first] if first is not None else []
+
+        for _ in range(3):
+            try:
+                pkt = await asyncio.wait_for(q.get(), timeout=2.0)
+                packets.append(pkt)
+            except TimeoutError:
+                break
+
+        for pkt in packets:
+            _LOGGER.debug("collect RX: %s", pkt.hex())
+            if is_nack(pkt):
+                _LOGGER.warning("NACK in collect_response")
+                return new_cc
+            if len(pkt) == 19 and pkt[1] == 0x11:
+                parsed = parse_greeting(pkt)
+                if parsed:
+                    _, battery_raw, _, greeting_cc = parsed
+                    self.security.battery_raw = battery_raw
+                    new_cc = greeting_cc
+                    _LOGGER.debug(
+                        "Greeting: battery_raw=%d, CC=%d",
+                        battery_raw,
+                        greeting_cc,
+                    )
+            elif len(pkt) == 16:
+                cc_from_resp = extract_response_cc(pkt)
+                if cc_from_resp:
+                    new_cc = cc_from_resp
+
+        return new_cc

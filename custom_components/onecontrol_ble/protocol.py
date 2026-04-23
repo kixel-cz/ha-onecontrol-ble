@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import struct
 from dataclasses import dataclass
 
@@ -20,10 +21,11 @@ class SecurityData:
     session_key: bytes  # SHA256(LTK+sessionID)[:16]
     session_id: bytes  # sessionID
     user_id: int = 0
-    last_cc: int = 0  # Last known CC — optional
+    last_cc: int = 0  # Last known CC - optional
+    battery_raw: int | None = None  # Raw battery value?
 
 
-def derive_session(ltk: bytes, random_a: bytes, random_b: bytes):
+def derive_session(ltk: bytes, random_a: bytes, random_b: bytes) -> tuple[bytes, bytes]:
     data = random_a[:8] + random_b[:8]
     sid = hashlib.sha256(data).digest()[:8]
     sk = hashlib.sha256(ltk[:16] + sid).digest()[:16]
@@ -35,7 +37,11 @@ def build_tlv(payload: bytes) -> bytes:
 
 
 def build_open_command(
-    session_key: bytes, session_id: bytes, last_cc: int, user_id: int = 0, action: int = 0
+    session_key: bytes,
+    session_id: bytes,
+    last_cc: int,
+    user_id: int = 0,
+    action: int = 0,
 ) -> bytes:
     cc = last_cc + 1
     nonce = session_id[:8] + struct.pack("<I", cc)
@@ -57,10 +63,19 @@ def extract_response_cc(packet: bytes) -> int | None:
     return None
 
 
-def parse_mitm_log(log_text: str) -> dict:
-    import re
+def parse_greeting(packet: bytes) -> tuple[bytes, int, int, int] | None:
+    if len(packet) < 19 or packet[0] != 0x00 or packet[1] != 0x11:
+        return None
+    p = packet[2:]
+    sid = p[1:9]
+    battery_raw = int.from_bytes(p[9:11], "little")
+    uid = int.from_bytes(p[11:13], "little")
+    cc = int.from_bytes(p[13:15], "little")
+    return sid, battery_raw, uid, cc
 
-    result = {}
+
+def parse_mitm_log(log_text: str) -> dict:
+    result: dict = {}
     for key, pattern in [
         ("ltk", r'"ltk":"([0-9A-Fa-f]+)"'),
         ("session_key", r'"sessionKey":"([0-9A-Fa-f]+)"'),

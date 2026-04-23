@@ -1,10 +1,12 @@
 """1Control SoloMini BLE integration for Home Assistant."""
 
+from __future__ import annotations
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 DOMAIN = "onecontrol_ble"
-PLATFORMS = ["cover"]
+PLATFORMS = ["cover", "sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
