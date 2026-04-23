@@ -4,13 +4,14 @@ import logging, re
 from typing import Any
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
+SOLUMINI_SERVICE_UUID = "d973f2e0-b19e-11e2-9e96-0800200c9a66"
 
 
 def parse_mitm_log(log_text: str) -> dict:
-    """Extrahuje security data z mitmproxy logu."""
     result = {}
     for key, pattern in [
         ("ltk",         r'"ltk":"([0-9A-Fa-f]+)"'),
@@ -33,11 +34,34 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self):
         self._parsed = {}
+        self._discovered_address = ""
+        self._discovered_name = "SoloMini"
+
+    async def async_step_bluetooth(
+        self, discovery_info: BluetoothServiceInfoBleak
+    ) -> config_entries.FlowResult:
+        """Automaticky objevené BLE zařízení."""
+        address = discovery_info.address
+        await self.async_set_unique_id(address)
+        self._abort_if_unique_id_configured()
+        self._discovered_address = address
+        self._discovered_name = discovery_info.name or "SoloMini"
+        self.context["title_placeholders"] = {
+            "name": self._discovered_name,
+            "address": address,
+        }
+        return await self.async_step_mitm()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Krok 1: Vložení mitmproxy logu nebo ruční zadání."""
+        """Ruční spuštění — přeskoč rovnou na mitmproxy krok."""
+        return await self.async_step_mitm(user_input)
+
+    async def async_step_mitm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Krok 1: Volitelné vložení mitmproxy logu."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -46,32 +70,23 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 parsed = parse_mitm_log(mitm_log)
                 if parsed.get("ltk") and parsed.get("session_key") and parsed.get("session_id"):
                     self._parsed = parsed
-                    return await self.async_step_device()
                 else:
                     errors["mitm_log"] = "parse_failed"
-            else:
+            if not errors:
                 return await self.async_step_device()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="mitm",
             data_schema=vol.Schema({
                 vol.Optional("mitm_log", default=""): str,
             }),
-            description_placeholders={
-                "instructions": (
-                    "Volitelné: Vložte obsah mitmproxy logu pro automatické "
-                    "vyplnění bezpečnostních dat. "
-                    "Návod: spusťte appku 1Control s mitmproxy proxy a "
-                    "exportujte log. Nebo přeskočte a zadejte data ručně."
-                )
-            },
             errors=errors,
         )
 
     async def async_step_device(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Krok 2: Zadání adresy a bezpečnostních dat."""
+        """Krok 2: BLE adresa a bezpečnostní klíče."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -90,10 +105,10 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(address)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=user_input.get("name", "SoloMini"),
+                    title=user_input.get("name", self._discovered_name),
                     data={
                         "address":     address,
-                        "name":        user_input.get("name", "SoloMini"),
+                        "name":        user_input.get("name", self._discovered_name),
                         "ltk":         ltk,
                         "session_key": sk,
                         "session_id":  sid,
@@ -103,13 +118,13 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         schema = vol.Schema({
-            vol.Required("address"):                              str,
-            vol.Optional("name",        default="SoloMini"):     str,
+            vol.Required("address", default=self._discovered_address): str,
+            vol.Optional("name",        default=self._discovered_name):              str,
             vol.Required("ltk",         default=self._parsed.get("ltk", "")):         str,
             vol.Required("session_key", default=self._parsed.get("session_key", "")): str,
             vol.Required("session_id",  default=self._parsed.get("session_id", "")):  str,
-            vol.Optional("user_id",     default=0):              int,
-            vol.Optional("action",      default=0):              int,
+            vol.Optional("user_id",     default=0):                                   int,
+            vol.Optional("action",      default=0):                                   int,
         })
         return self.async_show_form(
             step_id="device",

@@ -2,14 +2,14 @@
   "title": "1Control SoloMini BLE",
   "config": {
     "step": {
-      "user": {
-        "title": "Add 1Control SoloMini",
-        "description": "Optionally paste the contents of a mitmproxy log to auto-fill security data. If you don't have a log, leave the field empty and enter the data manually in the next step.\n\n**How to get a mitmproxy log:**\n1. Set up mitmproxy as a proxy on your phone\n2. Open the 1Control app and trigger a gate open\n3. Export the log and paste its contents here",
+      "mitm": {
+        "title": "Security keys — mitmproxy log",
+        "description": "Optionally paste the contents of a mitmproxy log to auto-fill security keys. Leave empty to enter keys manually in the next step.",
         "data": {
           "mitm_log": "mitmproxy log contents (optional)"
         },
         "data_description": {
-          "mitm_log": "Paste the full mitmproxy log. The integration will automatically extract LTK, sessionKey and sessionID."
+          "mitm_log": "Full mitmproxy log contents. The integration will automatically extract LTK, Session Key and Session ID."
         }
       },
       "device": {
@@ -25,7 +25,7 @@
           "action": "Action number"
         },
         "data_description": {
-          "address": "BLE MAC address, e.g. EF:73:A3:39:3B:E4",
+          "address": "BLE MAC address. Pre-filled when auto-discovered.",
           "ltk": "16-byte hex key from pairing (32 characters)",
           "session_key": "Session key from 1Control server (32 characters)",
           "session_id": "Session ID from 1Control server (16 characters)",

@@ -2,14 +2,14 @@
   "title": "1Control SoloMini BLE",
   "config": {
     "step": {
-      "user": {
-        "title": "Přidat 1Control SoloMini",
-        "description": "Volitelně vložte obsah mitmproxy logu pro automatické vyplnění bezpečnostních dat. Pokud log nemáte, nechte pole prázdné a data zadejte ručně v dalším kroku.\n\n**Jak získat mitmproxy log:**\n1. Na telefonu nastavte proxy na váš počítač (mitmproxy)\n2. Spusťte aplikaci 1Control a otevřete bránu\n3. Exportujte log a vložte jeho obsah sem",
+      "mitm": {
+        "title": "Bezpečnostní klíče — mitmproxy log",
+        "description": "Volitelně vložte obsah mitmproxy logu pro automatické vyplnění klíčů. Pokud log nemáte, nechte prázdné a zadejte klíče ručně v dalším kroku.",
         "data": {
           "mitm_log": "Obsah mitmproxy logu (volitelné)"
         },
         "data_description": {
-          "mitm_log": "Vložte celý obsah mitmproxy logu. Integrace z něj automaticky extrahuje LTK, sessionKey a sessionID."
+          "mitm_log": "Celý obsah mitmproxy logu. Integrace automaticky extrahuje LTK, Session Key a Session ID."
         }
       },
       "device": {
@@ -25,7 +25,7 @@
           "action": "Číslo akce"
         },
         "data_description": {
-          "address": "MAC adresa BLE zařízení, např. EF:73:A3:39:3B:E4",
+          "address": "MAC adresa BLE zařízení. Při automatické detekci je předvyplněna.",
           "ltk": "16-bajtový hex klíč z párování (32 znaků)",
           "session_key": "Session klíč ze serveru 1Control (32 znaků)",
           "session_id": "Session ID ze serveru 1Control (16 znaků)",
