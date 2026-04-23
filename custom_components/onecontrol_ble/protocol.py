@@ -73,15 +73,15 @@ def parse_greeting(packet: bytes):
     p = packet[2:]
     return p[1:9], p[9:11], p[11] | (p[12] << 8), p[13] | (p[14] << 8)
 
-def build_open_command(session_key, session_id, cc, user_id=0, action=1) -> bytes:
-    """e.h(): 17B open packet s AES-CCM-128"""
+def build_open_command(session_key, session_id, cc, user_id=0, action=0) -> bytes:
+    """OpenAccessRequest: OPERATION_PILOMAT_REQUEST_ID=0x21"""
     cc_open = cc + 1
     nonce  = session_id[:8] + struct.pack("<I", cc_open)
-    aad    = struct.pack("<H", user_id) + struct.pack("<I", cc_open) + b"\x01"
+    aad    = struct.pack("<H", user_id) + struct.pack("<I", cc_open) + b"\x21"
     cipher = AES.new(session_key, AES.MODE_CCM, nonce=nonce, mac_len=CCM_TAG_LEN)
     cipher.update(aad)
-    ct, tag = cipher.encrypt_and_digest(struct.pack("<H", action))
-    payload = b"\x01" + ct + tag + struct.pack("<H", user_id) + struct.pack("<H", cc_open) + b"\x00\x00"
+    ct, tag = cipher.encrypt_and_digest(bytes([0x01, action & 0xFF]))
+    payload = b"\x21" + ct + tag + struct.pack("<H", user_id) + struct.pack("<H", cc_open) + b"\x00\x00"
     return build_tlv(payload)
 
 def is_nack(packet: bytes) -> bool:
