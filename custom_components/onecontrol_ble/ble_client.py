@@ -170,17 +170,17 @@ class SoloMiniClient:
 
         return new_cc
 
-    async def get_system_info(self) -> dict | None:
+    async def get_system_info(self) -> dict[str, Any]:
         if self._lock.locked():
-            return None
+            return {}
         async with self._lock:
             try:
                 return await self._do_get_system_info()
             except Exception as e:
                 _LOGGER.warning("get_system_info failed: %s", e)
-                return None
+                return {}
 
-    async def _do_get_system_info(self) -> dict | None:
+    async def _do_get_system_info(self) -> dict[str, Any]:
         from .protocol import (
             assemble_fragments,
             build_get_system_info,
@@ -210,10 +210,10 @@ class SoloMiniClient:
             await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
             r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
             if is_nack(r):
-                return None
+                return {}
             resp_cc = extract_response_cc(r)
             if resp_cc is None:
-                return None
+                return {}
 
             # GetSystemInfo
             pkt = build_get_system_info(
@@ -240,7 +240,7 @@ class SoloMiniClient:
 
             assembled = assemble_fragments(frags)
             if not assembled:
-                return None
+                return {}
 
             info = decrypt_system_info(
                 self.security.session_key,
