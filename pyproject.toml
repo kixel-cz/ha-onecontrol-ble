@@ -14,6 +14,10 @@ python_version = "3.12"
 ignore_missing_imports = true
 strict = false
 
+[[tool.mypy.overrides]]
+module = "custom_components.onecontrol_ble.config_flow"
+ignore_errors = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

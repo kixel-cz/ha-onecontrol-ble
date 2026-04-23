@@ -48,7 +48,7 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
-    ) -> config_entries.FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         address = discovery_info.address
         await self.async_set_unique_id(address)
         self._abort_if_unique_id_configured()
@@ -62,7 +62,7 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         for info in async_discovered_service_info(self.hass, connectable=True):
             if SOLUMINI_SERVICE_UUID in [s.lower() for s in info.service_uuids]:
                 self._discovered_devices[info.address] = (
@@ -75,7 +75,7 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def async_step_pick_device(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         if user_input is not None:
             address = user_input["address"]
             await self.async_set_unique_id(address)
@@ -99,7 +99,7 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def async_step_mitm(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -125,7 +125,7 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def async_step_device(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
