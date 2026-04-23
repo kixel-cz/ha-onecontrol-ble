@@ -174,5 +174,5 @@ MIT — see [LICENSE](LICENSE)
 [hacs-url]: https://hacs.xyz
 [license-badge]: https://img.shields.io/badge/License-MIT-blue.svg
 [license-url]: LICENSE
-[ha-badge]: https://img.shields.io/badge/HA-2023.12%2B-green.svg
+[ha-badge]: https://img.shields.io/badge/HA-2024.4%2B-green.svg
 [ha-url]: https://www.home-assistant.io
