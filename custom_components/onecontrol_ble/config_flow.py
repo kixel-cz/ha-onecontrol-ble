@@ -1,7 +1,11 @@
 """Config flow pro 1Control SoloMini BLE."""
+
 from __future__ import annotations
-import logging, re
+
+import logging
+import re
 from typing import Any
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components.bluetooth import (
@@ -18,10 +22,10 @@ def parse_mitm_log(log_text: str) -> dict:
     """Extrahuje security data z mitmproxy logu."""
     result = {}
     for key, pattern in [
-        ("ltk",         r'"ltk":"([0-9A-Fa-f]+)"'),
+        ("ltk", r'"ltk":"([0-9A-Fa-f]+)"'),
         ("session_key", r'"sessionKey":"([0-9A-Fa-f]+)"'),
-        ("session_id",  r'"sessionID":"([0-9A-Fa-f]+)"'),
-        ("last_cc",     r'"lastCC":(\d+)'),
+        ("session_id", r'"sessionID":"([0-9A-Fa-f]+)"'),
+        ("last_cc", r'"lastCC":(\d+)'),
     ]:
         m = re.search(pattern, log_text)
         if m:
@@ -92,9 +96,11 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="pick_device",
-            data_schema=vol.Schema({
-                vol.Required("address"): vol.In(devices),
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Required("address"): vol.In(devices),
+                }
+            ),
         )
 
     async def async_step_mitm(
@@ -116,9 +122,11 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="mitm",
-            data_schema=vol.Schema({
-                vol.Optional("mitm_log", default=""): str,
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("mitm_log", default=""): str,
+                }
+            ),
             errors=errors,
         )
 
@@ -131,7 +139,7 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             address = user_input["address"].upper().strip()
             ltk = user_input["ltk"].strip().lower().replace(" ", "")
-            sk  = user_input["session_key"].strip().lower().replace(" ", "")
+            sk = user_input["session_key"].strip().lower().replace(" ", "")
             sid = user_input["session_id"].strip().lower().replace(" ", "")
 
             if not _is_hex(ltk, 32):
@@ -147,33 +155,31 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=user_input.get("name", self._discovered_name),
                     data={
-                        "address":     address,
-                        "name":        user_input.get("name", self._discovered_name),
-                        "ltk":         ltk,
+                        "address": address,
+                        "name": user_input.get("name", self._discovered_name),
+                        "ltk": ltk,
                         "session_key": sk,
-                        "session_id":  sid,
-                        "user_id":     user_input.get("user_id", 0),
-                        "action":      user_input.get("action", 0),
-                        "last_cc":     self._parsed.get("last_cc", 0),
+                        "session_id": sid,
+                        "user_id": user_input.get("user_id", 0),
+                        "action": user_input.get("action", 0),
+                        "last_cc": self._parsed.get("last_cc", 0),
                     },
                 )
 
         # Pokud byl vybrán "manual" v pick_device
-        default_address = (
-            self._discovered_address
-            if self._discovered_address != "manual"
-            else ""
-        )
+        default_address = self._discovered_address if self._discovered_address != "manual" else ""
 
-        schema = vol.Schema({
-            vol.Required("address",     default=default_address):                      str,
-            vol.Optional("name",        default=self._discovered_name):                str,
-            vol.Required("ltk",         default=self._parsed.get("ltk", "")):          str,
-            vol.Required("session_key", default=self._parsed.get("session_key", "")):  str,
-            vol.Required("session_id",  default=self._parsed.get("session_id", "")):   str,
-            vol.Optional("user_id",     default=0):                                    int,
-            vol.Optional("action",      default=0):                                    int,
-        })
+        schema = vol.Schema(
+            {
+                vol.Required("address", default=default_address): str,
+                vol.Optional("name", default=self._discovered_name): str,
+                vol.Required("ltk", default=self._parsed.get("ltk", "")): str,
+                vol.Required("session_key", default=self._parsed.get("session_key", "")): str,
+                vol.Required("session_id", default=self._parsed.get("session_id", "")): str,
+                vol.Optional("user_id", default=0): int,
+                vol.Optional("action", default=0): int,
+            }
+        )
         return self.async_show_form(
             step_id="device",
             data_schema=schema,

@@ -1,18 +1,22 @@
 """Cover entita pro 1Control SoloMini BLE."""
+
 from __future__ import annotations
+
 import logging
 from typing import Any
 
 from homeassistant.components.cover import (
-    CoverDeviceClass, CoverEntity, CoverEntityFeature,
+    CoverDeviceClass,
+    CoverEntity,
+    CoverEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .protocol import SecurityData
 from .ble_client import SoloMiniClient
+from .protocol import SecurityData
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
@@ -40,18 +44,18 @@ async def async_setup_entry(
 
 
 class SoloMiniCover(CoverEntity):
-    _attr_device_class       = CoverDeviceClass.GARAGE
+    _attr_device_class = CoverDeviceClass.GARAGE
     _attr_supported_features = CoverEntityFeature.OPEN
-    _attr_should_poll        = False
-    _attr_assumed_state      = True
-    _attr_is_closed          = None
-    _attr_is_opening         = False
-    _attr_has_entity_name    = True
-    _attr_name               = None
+    _attr_should_poll = False
+    _attr_assumed_state = True
+    _attr_is_closed = None
+    _attr_is_opening = False
+    _attr_has_entity_name = True
+    _attr_name = None
 
     def __init__(self, client: SoloMiniClient, entry: ConfigEntry) -> None:
         self._client = client
-        self._entry  = entry
+        self._entry = entry
         self._attr_unique_id = f"onecontrol_{entry.data['address'].replace(':', '').lower()}"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, entry.data["address"])},

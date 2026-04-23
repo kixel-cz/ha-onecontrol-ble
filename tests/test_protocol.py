@@ -1,13 +1,13 @@
 """BLE protocol tests (protocol.py)"""
+
 import hashlib
-import pytest
+
 from custom_components.onecontrol_ble.protocol import (
-    SecurityData,
-    derive_session,
-    build_open_command,
-    is_nack,
-    extract_response_cc,
     NACK,
+    build_open_command,
+    derive_session,
+    extract_response_cc,
+    is_nack,
 )
 from tests.conftest import (
     TEST_LTK,
@@ -21,8 +21,8 @@ from tests.conftest import (
 class TestDeriveSession:
     def test_deterministic(self):
         ltk = bytes.fromhex(TEST_LTK)
-        ra  = bytes.fromhex(TEST_RANDOM_A)
-        rb  = bytes.fromhex(TEST_RANDOM_B)
+        ra = bytes.fromhex(TEST_RANDOM_A)
+        rb = bytes.fromhex(TEST_RANDOM_B)
         sid1, sk1 = derive_session(ltk, ra, rb)
         sid2, sk2 = derive_session(ltk, ra, rb)
         assert sid1 == sid2
@@ -30,29 +30,29 @@ class TestDeriveSession:
 
     def test_known_values(self):
         ltk = bytes.fromhex(TEST_LTK)
-        ra  = bytes.fromhex(TEST_RANDOM_A)
-        rb  = bytes.fromhex(TEST_RANDOM_B)
+        ra = bytes.fromhex(TEST_RANDOM_A)
+        rb = bytes.fromhex(TEST_RANDOM_B)
         sid, sk = derive_session(ltk, ra, rb)
         assert sid.hex().upper() == TEST_SESSION_ID
         assert sk.hex().upper() == TEST_SESSION_KEY
 
     def test_session_id_is_8_bytes(self):
         ltk = bytes.fromhex(TEST_LTK)
-        ra  = bytes.fromhex(TEST_RANDOM_A)
-        rb  = bytes.fromhex(TEST_RANDOM_B)
+        ra = bytes.fromhex(TEST_RANDOM_A)
+        rb = bytes.fromhex(TEST_RANDOM_B)
         sid, _ = derive_session(ltk, ra, rb)
         assert len(sid) == 8
 
     def test_session_key_is_16_bytes(self):
         ltk = bytes.fromhex(TEST_LTK)
-        ra  = bytes.fromhex(TEST_RANDOM_A)
-        rb  = bytes.fromhex(TEST_RANDOM_B)
+        ra = bytes.fromhex(TEST_RANDOM_A)
+        rb = bytes.fromhex(TEST_RANDOM_B)
         _, sk = derive_session(ltk, ra, rb)
         assert len(sk) == 16
 
     def test_different_random_different_session(self):
         ltk = bytes.fromhex(TEST_LTK)
-        ra  = bytes.fromhex(TEST_RANDOM_A)
+        ra = bytes.fromhex(TEST_RANDOM_A)
         rb1 = bytes.fromhex(TEST_RANDOM_B)
         rb2 = bytes(reversed(bytes.fromhex(TEST_RANDOM_B)))
         sid1, sk1 = derive_session(ltk, ra, rb1)
@@ -63,8 +63,8 @@ class TestDeriveSession:
     def test_sk_derived_from_ltk_and_sid(self):
         """SK = SHA256(LTK || SID)[:16]."""
         ltk = bytes.fromhex(TEST_LTK)
-        ra  = bytes.fromhex(TEST_RANDOM_A)
-        rb  = bytes.fromhex(TEST_RANDOM_B)
+        ra = bytes.fromhex(TEST_RANDOM_A)
+        rb = bytes.fromhex(TEST_RANDOM_B)
         sid, sk = derive_session(ltk, ra, rb)
         expected_sk = hashlib.sha256(ltk + sid).digest()[:16]
         assert sk == expected_sk
@@ -72,32 +72,29 @@ class TestDeriveSession:
 
 class TestBuildOpenCommand:
     def test_length(self, security):
-        pkt = build_open_command(
-            security.session_key, security.session_id, 0, security.user_id)
+        pkt = build_open_command(security.session_key, security.session_id, 0, security.user_id)
         assert len(pkt) == 17  # 2B TLV header + 15B payload
 
     def test_tlv_header(self, security):
-        pkt = build_open_command(
-            security.session_key, security.session_id, 0, security.user_id)
+        pkt = build_open_command(security.session_key, security.session_id, 0, security.user_id)
         assert pkt[0] == 0x00
         assert pkt[1] == 0x0F  # payload length = 15
 
     def test_cmd_byte(self, security):
-        pkt = build_open_command(
-            security.session_key, security.session_id, 0, security.user_id)
+        pkt = build_open_command(security.session_key, security.session_id, 0, security.user_id)
         assert pkt[2] == 0x01
 
     def test_cc_in_packet(self, security):
         for last_cc in [0, 1, 42, 100, 500]:
             pkt = build_open_command(
-                security.session_key, security.session_id, last_cc, security.user_id)
+                security.session_key, security.session_id, last_cc, security.user_id
+            )
             cc_in_pkt = int.from_bytes(pkt[13:17], "little")
             assert cc_in_pkt == last_cc + 1
 
     def test_user_id_in_packet(self, security):
         for uid in [0, 1, 255]:
-            pkt = build_open_command(
-                security.session_key, security.session_id, 0, uid)
+            pkt = build_open_command(security.session_key, security.session_id, 0, uid)
             uid_in_pkt = int.from_bytes(pkt[11:13], "little")
             assert uid_in_pkt == uid
 

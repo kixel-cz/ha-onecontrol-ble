@@ -1,23 +1,34 @@
 """1Control SoloMini RE — BLE client."""
+
 from __future__ import annotations
-import asyncio, logging, os
+
+import asyncio
+import logging
+import os
+
 from bleak import BleakClient
+
 from .protocol import (
-    SecurityData, TX_CHAR_UUID, RX_CHAR_UUID,
-    derive_session, build_open_command, is_nack, extract_response_cc,
+    RX_CHAR_UUID,
+    TX_CHAR_UUID,
+    SecurityData,
+    build_open_command,
+    derive_session,
+    extract_response_cc,
+    is_nack,
 )
 
 _LOGGER = logging.getLogger(__name__)
-CONNECT_TIMEOUT  = 20.0
+CONNECT_TIMEOUT = 20.0
 RESPONSE_TIMEOUT = 8.0
 
 
 class SoloMiniClient:
     def __init__(self, address: str, security: SecurityData, action: int = 0):
-        self.address  = address
+        self.address = address
         self.security = security
-        self.action   = action
-        self._lock    = asyncio.Lock()
+        self.action = action
+        self._lock = asyncio.Lock()
 
     async def open_gate(self) -> bool:
         if self._lock.locked():
@@ -39,19 +50,18 @@ class SoloMiniClient:
 
         async with BleakClient(self.address, timeout=CONNECT_TIMEOUT) as client:
             _LOGGER.debug("Connected to %s", self.address)
-            await client.start_notify(RX_CHAR_UUID,
-                lambda _, d: q.put_nowait(bytes(d)))
+            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
                 q.get_nowait()
 
             # 1. StartSession — nutný pro BLE handshake
-            await client.write_gatt_char(TX_CHAR_UUID,
-                bytes([0x00, 0x0A, 0x90, 0x02]) + random_a, response=True)
+            await client.write_gatt_char(
+                TX_CHAR_UUID, bytes([0x00, 0x0A, 0x90, 0x02]) + random_a, response=True
+            )
             resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
             _LOGGER.debug("Session: %s", resp.hex())
-            our_sid, our_sk = derive_session(
-                self.security.ltk, random_a, resp[4:12])
+            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
             # 2. Zkus open přímo s uloženým last_cc
             #    Pokud last_cc > aktuální CC zařízení → NACK, pak probe
@@ -96,7 +106,7 @@ class SoloMiniClient:
                         if is_nack(ack):
                             return False
                         new_cc = extract_response_cc(ack) or resp_cc + 1
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         new_cc = resp_cc + 1
 
                 elif len(r) == 16:
@@ -119,14 +129,14 @@ class SoloMiniClient:
                             if is_nack(ack2):
                                 return False
                             new_cc = extract_response_cc(ack2) or resp_cc + 1
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             new_cc = resp_cc + 1
                     else:
-                        new_cc = (resp_cc or current_cc + 1)
+                        new_cc = resp_cc or current_cc + 1
                 else:
                     new_cc = current_cc + 1
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 new_cc = current_cc + 1
 
             # Ulož aktuální CC pro příští volání

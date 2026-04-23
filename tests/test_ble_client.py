@@ -1,14 +1,14 @@
-""" BLE client tests (ble_client.py)."""
-import asyncio
+"""BLE client tests (ble_client.py)."""
+
 import struct
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from custom_components.onecontrol_ble.ble_client import SoloMiniClient
 from custom_components.onecontrol_ble.protocol import (
-    SecurityData,
-    build_open_command,
     NACK,
+    SecurityData,
 )
 from tests.conftest import TEST_LTK, TEST_SESSION_ID, TEST_SESSION_KEY
 
@@ -22,7 +22,6 @@ def make_open_response(cc: int) -> bytes:
 
 
 class FakeBleakClient:
-
     def __init__(self, responses: list[bytes]):
         self._responses = list(responses)
         self._notify_callback = None
@@ -55,7 +54,9 @@ def security() -> SecurityData:
     )
 
 
-def make_client(security: SecurityData, responses: list[bytes]) -> tuple[SoloMiniClient, FakeBleakClient]:
+def make_client(
+    security: SecurityData, responses: list[bytes]
+) -> tuple[SoloMiniClient, FakeBleakClient]:
     fake_ble = FakeBleakClient(responses)
     client = SoloMiniClient(
         address="AA:BB:CC:DD:EE:FF",
@@ -70,13 +71,14 @@ class TestOpenGate:
     async def test_successful_open_direct(self, security):
         random_b = bytes(range(8))
         session_resp = make_session_response(random_b)
-        probe_resp   = make_open_response(cc=5)   # probe response
-        open_resp    = make_open_response(cc=6)    # open response
+        probe_resp = make_open_response(cc=5)  # probe response
+        open_resp = make_open_response(cc=6)  # open response
 
         client, fake_ble = make_client(security, [session_resp, probe_resp, open_resp])
 
-        with patch("custom_components.onecontrol_ble.ble_client.BleakClient",
-                   return_value=fake_ble):
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient", return_value=fake_ble
+        ):
             result = await client.open_gate()
 
         assert result is True
@@ -86,16 +88,16 @@ class TestOpenGate:
     @pytest.mark.asyncio
     async def test_nack_triggers_probe(self, security):
         random_b = bytes(range(8))
-        session_resp  = make_session_response(random_b)
-        nack_resp     = NACK
-        probe_resp    = make_open_response(cc=50)
-        open_resp     = make_open_response(cc=51)
+        session_resp = make_session_response(random_b)
+        nack_resp = NACK
+        probe_resp = make_open_response(cc=50)
+        open_resp = make_open_response(cc=51)
 
-        client, fake_ble = make_client(
-            security, [session_resp, nack_resp, probe_resp, open_resp])
+        client, fake_ble = make_client(security, [session_resp, nack_resp, probe_resp, open_resp])
 
-        with patch("custom_components.onecontrol_ble.ble_client.BleakClient",
-                   return_value=fake_ble):
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient", return_value=fake_ble
+        ):
             result = await client.open_gate()
 
         assert result is True
@@ -103,9 +105,6 @@ class TestOpenGate:
 
     @pytest.mark.asyncio
     async def test_lock_prevents_concurrent(self, security):
-        random_b = bytes(range(8))
-        session_resp = make_session_response(random_b)
-
         client = SoloMiniClient(
             address="AA:BB:CC:DD:EE:FF",
             security=security,
@@ -124,13 +123,14 @@ class TestOpenGate:
         security.last_cc = 0
         random_b = bytes(range(8))
         session_resp = make_session_response(random_b)
-        probe_resp   = make_open_response(cc=42)
-        open_resp    = make_open_response(cc=43)
+        probe_resp = make_open_response(cc=42)
+        open_resp = make_open_response(cc=43)
 
         client, fake_ble = make_client(security, [session_resp, probe_resp, open_resp])
 
-        with patch("custom_components.onecontrol_ble.ble_client.BleakClient",
-                   return_value=fake_ble):
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient", return_value=fake_ble
+        ):
             await client.open_gate()
 
         assert client.security.last_cc > 0
@@ -148,8 +148,9 @@ class TestOpenGate:
         fake_ctx.__aenter__ = failing_context
         fake_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("custom_components.onecontrol_ble.ble_client.BleakClient",
-                   return_value=fake_ctx):
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient", return_value=fake_ctx
+        ):
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 result = await security_client(security).open_gate()
 
@@ -168,6 +169,7 @@ def security_client(security: SecurityData) -> SoloMiniClient:
 class TestParseMitmLog:
     def test_parses_all_fields(self):
         from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+
         log = (
             '"ltk":"AABBCCDDAABBCCDDAABBCCDDAABBCCDD"'
             '"sessionKey":"11223344112233441122334411223344"'
@@ -182,15 +184,18 @@ class TestParseMitmLog:
 
     def test_empty_log(self):
         from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+
         assert parse_mitm_log("") == {}
 
     def test_partial_log(self):
         from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+
         result = parse_mitm_log('"ltk":"AABB"')
         assert result.get("ltk") == "AABB"
         assert "session_key" not in result
 
     def test_uppercase_output(self):
         from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+
         result = parse_mitm_log('"ltk":"aabbccdd"')
         assert result["ltk"] == "AABBCCDD"

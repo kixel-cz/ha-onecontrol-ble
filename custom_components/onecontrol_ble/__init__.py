@@ -1,6 +1,7 @@
 """1Control SoloMini BLE integration for Home Assistant."""
-from homeassistant.core import HomeAssistant
+
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 DOMAIN = "onecontrol_ble"
 PLATFORMS = ["cover"]

@@ -1,8 +1,11 @@
 """1Control SoloMini RE — BLE protocol."""
+
 from __future__ import annotations
-import hashlib, struct
-from dataclasses import dataclass, field
-from typing import Optional
+
+import hashlib
+import struct
+from dataclasses import dataclass
+
 from Crypto.Cipher import AES
 
 TX_CHAR_UUID = "d973f2e1-b19e-11e2-9e96-0800200c9a66"
@@ -13,18 +16,18 @@ CCM_TAG_LEN = 6
 
 @dataclass
 class SecurityData:
-    ltk:         bytes        # Long Term Key — z párování, trvalý
-    session_key: bytes        # SHA256(LTK+sessionID)[:16] — trvalý
-    session_id:  bytes        # sessionID — trvalý
-    user_id:     int = 0
-    last_cc:     int = 0      # Poslední známý CC — optimalizace, nepovinný
+    ltk: bytes  # Long Term Key — z párování, trvalý
+    session_key: bytes  # SHA256(LTK+sessionID)[:16] — trvalý
+    session_id: bytes  # sessionID — trvalý
+    user_id: int = 0
+    last_cc: int = 0  # Poslední známý CC — optimalizace, nepovinný
 
 
 def derive_session(ltk: bytes, random_a: bytes, random_b: bytes):
     """Derivuje sessionID a sessionKey z LTK + random values."""
     data = random_a[:8] + random_b[:8]
     sid = hashlib.sha256(data).digest()[:8]
-    sk  = hashlib.sha256(ltk[:16] + sid).digest()[:16]
+    sk = hashlib.sha256(ltk[:16] + sid).digest()[:16]
     return sid, sk
 
 
@@ -32,12 +35,13 @@ def build_tlv(payload: bytes) -> bytes:
     return bytes([0x00, len(payload)]) + payload
 
 
-def build_open_command(session_key: bytes, session_id: bytes,
-                       last_cc: int, user_id: int = 0, action: int = 0) -> bytes:
+def build_open_command(
+    session_key: bytes, session_id: bytes, last_cc: int, user_id: int = 0, action: int = 0
+) -> bytes:
     """Sestaví open příkaz. cmd=0x01, plaintext=[0x01, action]."""
-    cc     = last_cc + 1
-    nonce  = session_id[:8] + struct.pack("<I", cc)
-    aad    = struct.pack("<H", user_id) + struct.pack("<I", cc) + b"\x01"
+    cc = last_cc + 1
+    nonce = session_id[:8] + struct.pack("<I", cc)
+    aad = struct.pack("<H", user_id) + struct.pack("<I", cc) + b"\x01"
     cipher = AES.new(session_key, AES.MODE_CCM, nonce=nonce, mac_len=CCM_TAG_LEN)
     cipher.update(aad)
     ct, tag = cipher.encrypt_and_digest(bytes([0x01, action & 0xFF]))
@@ -49,7 +53,7 @@ def is_nack(packet: bytes) -> bool:
     return packet[:4] == NACK
 
 
-def extract_response_cc(packet: bytes) -> Optional[int]:
+def extract_response_cc(packet: bytes) -> int | None:
     """Extrahuje CC z response paketu (16B)."""
     if len(packet) >= 16:
         return int.from_bytes(packet[12:14], "little")
