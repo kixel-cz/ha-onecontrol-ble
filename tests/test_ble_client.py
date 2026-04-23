@@ -168,7 +168,7 @@ def security_client(security: SecurityData) -> SoloMiniClient:
 
 class TestParseMitmLog:
     def test_parses_all_fields(self):
-        from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+        from custom_components.onecontrol_ble.protocol import parse_mitm_log
 
         log = (
             '"ltk":"AABBCCDDAABBCCDDAABBCCDDAABBCCDD"'
@@ -183,19 +183,19 @@ class TestParseMitmLog:
         assert result["last_cc"] == 42
 
     def test_empty_log(self):
-        from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+        from custom_components.onecontrol_ble.protocol import parse_mitm_log
 
         assert parse_mitm_log("") == {}
 
     def test_partial_log(self):
-        from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+        from custom_components.onecontrol_ble.protocol import parse_mitm_log
 
         result = parse_mitm_log('"ltk":"AABB"')
         assert result.get("ltk") == "AABB"
         assert "session_key" not in result
 
     def test_uppercase_output(self):
-        from custom_components.onecontrol_ble.config_flow import parse_mitm_log
+        from custom_components.onecontrol_ble.protocol import parse_mitm_log
 
         result = parse_mitm_log('"ltk":"aabbccdd"')
         assert result["ltk"] == "AABBCCDD"
