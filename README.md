@@ -41,9 +41,9 @@ The integration requires three keys extracted from the 1Control cloud: **LTK**, 
 
 ### Method: mitmproxy
 
-1. Install [mitmproxy](https://mitmproxy.org/) on your computer
-2. Configure your phone to use your computer as an HTTP/HTTPS proxy
-3. Install the mitmproxy CA certificate on your phone
+1. Install [mitmproxy](https://mitmproxy.org/) on your computer - see [installation documentation](https://docs.mitmproxy.org/stable/overview/installation/)
+2. Configure your phone to use your computer as an HTTP/HTTPS proxy (Settings -> Wi-Fi -> current network -> HTTP proxy: manual ...). Turn the WiFi off and on again to make sure new settings were applied (turn off any VPN if enabled).
+3. Install the mitmproxy CA certificate on your phone - [instructions](https://docs.mitmproxy.org/stable/concepts/certificates/)
 4. Start `mitmdump -w onecontrol.log` on your computer
 5. Open the 1Control app and trigger a gate open
 6. Stop mitmproxy — the log file `onecontrol.log` now contains the keys
