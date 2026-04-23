@@ -1,18 +1,23 @@
-# 1Control SoloMini BLE for Home Assistant - work in progress, it's not working yet!
+# 1Control SoloMini BLE for Home Assistant
 
 [![HACS Custom][hacs-badge]][hacs-url]
 [![License: MIT][license-badge]][license-url]
 [![HA Version][ha-badge]][ha-url]
 
-Local Home Assistant integration for **1Control SoloMini RE** garage door openers via Bluetooth. No cloud, no dependency on the 1Control app — everything works directly over BLE.
+Local Home Assistant integration for **1Control SoloMini RE** garage door openers via Bluetooth. No cloud dependency during operation — everything works directly over BLE.
 
 ## Features
 
 - ✅ Open garage door / gate with one tap
-- ✅ Automatic BLE pairing — no key or account needed
-- ✅ Fully local — no cloud, no internet required
+- ✅ Fully local operation — no cloud, no internet required after setup
 - ✅ Works with any HA Bluetooth adapter (built-in or USB dongle)
 - ✅ HACS installation
+
+---
+
+## Prerequisites
+
+To set up the integration, you need to extract security keys from the 1Control cloud **once** during initial configuration. This requires capturing a mitmproxy log while the 1Control app opens your gate. The keys are permanent and do not change — you will not need to repeat this process.
 
 ---
 
@@ -30,12 +35,42 @@ Or manually:
 
 ---
 
+## Getting security keys (one-time setup)
+
+The integration requires three keys extracted from the 1Control cloud: **LTK**, **Session Key**, and **Session ID**. These are permanent and tied to your device pairing.
+
+### Method: mitmproxy
+
+1. Install [mitmproxy](https://mitmproxy.org/) on your computer
+2. Configure your phone to use your computer as an HTTP/HTTPS proxy
+3. Install the mitmproxy CA certificate on your phone
+4. Start `mitmdump -w onecontrol.log` on your computer
+5. Open the 1Control app and trigger a gate open
+6. Stop mitmproxy — the log file `onecontrol.log` now contains the keys
+
+You can then either:
+- **Paste the log directly** into the integration setup (it will extract the keys automatically), or
+- **Use the extraction script** from the `tools/` folder:
+
+```bash
+python3 tools/parse_mitm_log.py onecontrol.log
+```
+
+Output:
+```
+LTK:         xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Session Key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Session ID:  xxxxxxxxxxxxxxxx
+```
+
+---
+
 ## Configuration
 
 1. **Settings → Devices & Services → Add Integration**
 2. Search for **1Control SoloMini BLE**
-3. Enter the BLE address of your device (e.g. `EF:73:A3:39:3B:E4`)
-4. Leave the **LTK key empty** — the integration pairs automatically on first use
+3. **Step 1 — mitmproxy log** (optional): paste the log contents for automatic key extraction, or leave empty to enter keys manually
+4. **Step 2 — Device data**: enter the BLE address and security keys
 5. Click **Submit**
 
 A **Cover** entity is created which you can add to your dashboard or use in automations.
@@ -45,31 +80,6 @@ A **Cover** entity is created which you can add to your dashboard or use in auto
 - In the 1Control app: device detail → info
 - On the label on the SoloMini device itself
 - In HA: **Settings → System → Bluetooth** → list of visible devices
-
-### Pairing
-
-On first use (pressing **Open** in HA), the integration automatically:
-
-1. Generates a cryptographic keypair (ECDH secp256r1)
-2. Pairs with the device over BLE
-3. Saves the key — subsequent connections skip pairing
-
-If pairing fails, make sure the SoloMini is in Bluetooth range and that no PIN is set on the device (default is no PIN).
-
----
-
-## Advanced configuration
-
-If you want to provide an LTK key manually (e.g. exported from another installation), enter it as 32 hex characters in the **LTK key** field during setup.
-
-To extract the LTK from a 1Control cloud account (if the device was paired via the cloud), use `tools/extract_ltk.py`:
-
-```bash
-python3 tools/extract_ltk.py \
-  --email your@email.com \
-  --password your_password \
-  --serial 28524
-```
 
 ---
 
@@ -96,9 +106,9 @@ automation:
 | Issue | Solution |
 |---|---|
 | Device not visible in HA | Check HA Bluetooth adapter, restart integration |
-| Pairing fails | Make sure SoloMini is in range and try again |
-| Gate doesn't open after pairing | Try action number 0 instead of 1 in integration settings |
+| Gate doesn't open | Verify the security keys — they must match the paired device |
 | Integration disconnects | Normal — SoloMini is wake-on-demand over BLE |
+| Wrong action number | Try action number 1 instead of 0 in integration settings |
 
 ---
 
@@ -107,7 +117,7 @@ automation:
 <details>
 <summary>BLE protocol (for enthusiasts)</summary>
 
-Reverse-engineered from `it.onecontrol.apk` v2.6.4.
+Reverse-engineered from `it.onecontrol.apk` v2.6.4 and iOS btsnoop captures.
 
 ### BLE characteristics
 
@@ -119,38 +129,37 @@ Reverse-engineered from `it.onecontrol.apk` v2.6.4.
 ### Communication flow
 
 ```
-1. PAIRING (once, result is saved):
-   HA → device:  [00][42][90][01][phone_pubkey_64B]
-   device → HA:  [device_pubkey_64B]
-   LTK = SHA256(ECDH(phone_privkey, device_pubkey))[0:16]
+1. SESSION (every connection):
+   HA → device:  [00][0A][90][02][randomA_8B]        (StartSession)
+   device → HA:  [00][0A][90][00][randomB_8B]
+   our_sessionID  = SHA256(randomA || randomB)[0:8]
+   our_sessionKey = SHA256(LTK || our_sessionID)[0:16]
 
-2. SESSION (every connection):
-   HA → device:  [00][0A][90][02][randomA_8B]
-   device → HA:  [randomB_8B]
-   sessionID  = SHA256(randomA || randomB)[0:8]
-   sessionKey = SHA256(LTK || sessionID)[0:16]
+2. PROBE (discover current device CC counter):
+   HA → device:  [00][0F][01][AES-CCM(our_sk,cc=1)][uid_2B][0001000000]
+   device → HA:  [00][0E][01][...][uid_2B][current_CC_4B]
 
-3. GREETING (device → HA, sent on connect):
-   [00][11][01][sessionID_8B][2B][userID_2B][CC_lo][CC_hi][00][00]
-
-4. OPEN (HA → device):
-   nonce   = sessionID || CC+1 as uint32 LE        (12 B)
-   aad     = [userID 2B] || [CC+1 uint32 LE] || [01] (7 B)
-   CCM_out = AES-CCM-128(sessionKey, nonce, aad,
-               plaintext=action_2B, mac_len=6)       (8 B)
-   packet: [00][0F][01][CCM_out_8B][userID_2B][CC+1_2B][00][00]
+3. OPEN (using server session key + current CC):
+   server_sessionKey = SHA256(LTK || server_sessionID)[0:16]
+   nonce   = server_sessionID || (current_CC+1) as uint32 LE   (12 B)
+   aad     = [userID 2B] || [(CC+1) uint32 LE] || [0x01]       (7 B)
+   CCM_out = AES-CCM-128(server_sessionKey, nonce, aad,
+               plaintext=[0x01, action], mac_len=6)             (8 B)
+   packet: [00][0F][01][CCM_out_8B][userID_2B][CC+1_4B]
 ```
+
+### Key insight
+
+The device stores a permanent **Session ID** from the initial cloud pairing. It only accepts open commands encrypted with `SHA256(LTK || stored_sessionID)`. This key is available from the 1Control cloud API (`/security/{serial}`) and does not change.
 
 ### Key APK source files
 
 | File | Description |
 |---|---|
-| `x2.java` | ECDH pairing worker |
 | `w2.java` | StartSession — session key derivation |
 | `d9/e.java` | AES-CCM packet builder (`e.h()`) |
-| `d9/j.java` | SHA256 KDF helpers, ECDH functions |
-| `StartPairingRequest.java` | Pairing packet format |
 | `StartSessionRequest.java` | Session packet format |
+| `OpenAccessRequest.java` | Open command format |
 | `ControlSecurityRequest.java` | Base class for all encrypted commands |
 
 </details>

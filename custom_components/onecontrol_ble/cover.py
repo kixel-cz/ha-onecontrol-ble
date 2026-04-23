@@ -10,15 +10,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.storage import Store
 
 from .protocol import SecurityData
 from .ble_client import SoloMiniClient
 
 _LOGGER = logging.getLogger(__name__)
-
-DOMAIN      = "onecontrol_ble"
-STORAGE_KEY = "onecontrol_ble_security"
+DOMAIN = "onecontrol_ble"
 
 
 async def async_setup_entry(
@@ -26,33 +23,18 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    ltk_hex = entry.data.get("ltk", "")
-    store = Store(hass, 1, f"{STORAGE_KEY}_{entry.entry_id}")
-    stored = await store.async_load()
-
-    if stored and stored.get("ltk"):
-        sec = SecurityData.from_dict(stored)
-        _LOGGER.debug("Loaded LTK from storage")
-    elif ltk_hex:
-        sec = SecurityData(
-            ltk=bytes.fromhex(ltk_hex),
-            user_id=entry.data.get("user_id", 0),
-        )
-    else:
-        sec = None
-        _LOGGER.debug("No LTK — will pair on first open")
-
-    def on_paired(new_sec: SecurityData) -> None:
-        hass.async_create_task(store.async_save(new_sec.to_dict()))
-        _LOGGER.info("Pairing complete, LTK saved")
-
+    sec = SecurityData(
+        ltk=bytes.fromhex(entry.data["ltk"]),
+        session_key=bytes.fromhex(entry.data["session_key"]),
+        session_id=bytes.fromhex(entry.data["session_id"]),
+        user_id=entry.data.get("user_id", 0),
+    )
     client = SoloMiniClient(
         address=entry.data["address"],
         security=sec,
-        action=entry.data.get("action", 1),
-        on_paired=on_paired,
+        action=entry.data.get("action", 0),
     )
-    hass.data[DOMAIN][entry.entry_id] = client
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = client
     async_add_entities([SoloMiniCover(client, entry)], True)
 
 
@@ -91,4 +73,3 @@ class SoloMiniCover(CoverEntity):
     @property
     def is_closed(self) -> bool | None:
         return self._attr_is_closed
-

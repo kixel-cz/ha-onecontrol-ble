@@ -4,40 +4,43 @@
     "step": {
       "user": {
         "title": "Přidat 1Control SoloMini",
-        "description": "Zadejte BLE adresu vašeho SoloMini. **Pole LTK nechte prázdné** — integrace zařízení spáruje automaticky při prvním použití.",
+        "description": "Volitelně vložte obsah mitmproxy logu pro automatické vyplnění bezpečnostních dat. Pokud log nemáte, nechte pole prázdné a data zadejte ručně v dalším kroku.\n\n**Jak získat mitmproxy log:**\n1. Na telefonu nastavte proxy na váš počítač (mitmproxy)\n2. Spusťte aplikaci 1Control a otevřete bránu\n3. Exportujte log a vložte jeho obsah sem",
+        "data": {
+          "mitm_log": "Obsah mitmproxy logu (volitelné)"
+        },
+        "data_description": {
+          "mitm_log": "Vložte celý obsah mitmproxy logu. Integrace z něj automaticky extrahuje LTK, sessionKey a sessionID."
+        }
+      },
+      "device": {
+        "title": "Bezpečnostní data zařízení",
+        "description": "Zadejte BLE adresu a bezpečnostní klíče vašeho SoloMini.",
         "data": {
           "address": "BLE adresa",
           "name": "Název",
-          "action": "Číslo akce",
-          "ltk": "LTK klíč (volitelné)",
-          "user_id": "User ID (volitelné)",
-          "serial": "Sériové číslo (volitelné)"
+          "ltk": "LTK klíč",
+          "session_key": "Session Key",
+          "session_id": "Session ID",
+          "user_id": "User ID",
+          "action": "Číslo akce"
         },
         "data_description": {
-          "address": "MAC adresa BLE zařízení, např. EF:73:A3:39:3B:E4. Najdete ji v Bluetooth skeneru nebo v aplikaci 1Control.",
-          "ltk": "16-bajtový hex klíč. Nechte prázdné — integrace se zařízením spáruje automaticky při prvním otevření.",
-          "action": "Číslo akce pro otevření brány. Výchozí hodnota 1 funguje pro většinu zařízení."
+          "address": "MAC adresa BLE zařízení, např. EF:73:A3:39:3B:E4",
+          "ltk": "16-bajtový hex klíč z párování (32 znaků)",
+          "session_key": "Session klíč ze serveru 1Control (32 znaků)",
+          "session_id": "Session ID ze serveru 1Control (16 znaků)",
+          "action": "Číslo akce pro otevření brány (výchozí 0)"
         }
       }
     },
     "error": {
-      "ltk_invalid": "LTK musí mít přesně 32 hexadecimálních znaků (16 bajtů).",
-      "cannot_connect": "Nelze se připojit k zařízení. Zkontrolujte BLE adresu a ujistěte se, že je zařízení v dosahu.",
-      "pairing_failed": "Párování se nezdařilo. Ujistěte se, že je zařízení v párovacím módu, a zkuste to znovu."
+      "invalid_hex": "Neplatný hex formát nebo špatná délka.",
+      "parse_failed": "Nepodařilo se extrahovat data z logu. Zkontrolujte, zda log obsahuje volání security API.",
+      "cannot_connect": "Nelze se připojit k zařízení. Zkontrolujte BLE adresu.",
+      "already_configured": "Toto zařízení je již nakonfigurováno."
     },
     "abort": {
       "already_configured": "Toto zařízení je již nakonfigurováno."
-    }
-  },
-  "entity": {
-    "cover": {
-      "onecontrol_ble": {
-        "state": {
-          "open": "Otevřeno",
-          "closed": "Zavřeno",
-          "opening": "Otevírá se"
-        }
-      }
     }
   }
 }
