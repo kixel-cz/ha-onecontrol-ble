@@ -1,0 +1,7 @@
+ruff
+mypy
+pytest
+pytest-asyncio
+pytest-cov
+pycryptodome
+bleak
