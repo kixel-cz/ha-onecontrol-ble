@@ -108,7 +108,6 @@ automation:
 | Device not visible in HA | Check HA Bluetooth adapter, restart integration |
 | Gate doesn't open | Verify the security keys — they must match the paired device |
 | Integration disconnects | Normal — SoloMini is wake-on-demand over BLE |
-| Wrong action number | Try action number 1 instead of 0 in integration settings |
 
 ---
 
