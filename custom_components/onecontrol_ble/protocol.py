@@ -21,8 +21,8 @@ class SecurityData:
     session_key: bytes  # SHA256(LTK+sessionID)[:16]
     session_id: bytes  # sessionID
     user_id: int = 0
-    last_cc: int = 0  # Last known CC - optional
-    battery_raw: int | None = None  # Raw battery value?
+    last_cc: int = 0  # Last known CC — optional
+    battery_raw: int | None = None  # Raw value
 
 
 def derive_session(ltk: bytes, random_a: bytes, random_b: bytes) -> tuple[bytes, bytes]:
@@ -85,4 +85,80 @@ def parse_mitm_log(log_text: str) -> dict:
         m = re.search(pattern, log_text)
         if m:
             result[key] = m.group(1).upper() if key != "last_cc" else int(m.group(1))
+    return result
+
+
+def build_get_system_info(
+    session_key: bytes,
+    session_id: bytes,
+    last_cc: int,
+    user_id: int = 0,
+) -> bytes:
+    cc = last_cc + 1
+    nonce = session_id[:8] + struct.pack("<I", cc)
+    aad = struct.pack("<H", user_id) + struct.pack("<I", cc) + b"\x14"
+    cipher = AES.new(session_key, AES.MODE_CCM, nonce=nonce, mac_len=CCM_TAG_LEN)
+    cipher.update(aad)
+    ct, tag = cipher.encrypt_and_digest(b"\xff")
+    payload = b"\x14" + ct + tag + struct.pack("<H", user_id) + struct.pack("<I", cc)
+    return build_tlv(payload)
+
+
+def assemble_fragments(packets: list[bytes]) -> bytes | None:
+    parts: dict[int, bytes] = {}
+    for pkt in packets:
+        if not pkt:
+            continue
+        if (pkt[0] >> 4) == 4:  # FragmentedPacket
+            length = pkt[1]
+            index = pkt[3]
+            data = pkt[4 : 2 + length]
+            parts[index] = data
+        else:
+            # SimplePacket
+            return pkt[2:]
+    if not parts:
+        return None
+    return b"".join(parts[i] for i in sorted(parts.keys()))
+
+
+def decrypt_system_info(
+    session_key: bytes,
+    session_id: bytes,
+    assembled: bytes,
+) -> dict | None:
+    if len(assembled) < 8:
+        return None
+    cmd = assembled[0]
+    d = assembled
+    cc = (d[-4] & 0xFF) | ((d[-3] & 0xFF) << 8) | ((d[-2] & 0xFF) << 16) | ((d[-1] & 0xFF) << 24)
+    b_arr = assembled[1:-6]  # bez cmd(1B) a bez posledních 6B
+
+    nonce = session_id[:8] + struct.pack("<I", cc)
+    aad = struct.pack("<H", 0) + struct.pack("<I", cc) + bytes([cmd])
+    ct = b_arr[:-CCM_TAG_LEN]
+    tag = b_arr[-CCM_TAG_LEN:]
+
+    try:
+        cipher = AES.new(session_key, AES.MODE_CCM, nonce=nonce, mac_len=CCM_TAG_LEN)
+        cipher.update(aad)
+        pt = cipher.decrypt_and_verify(ct, tag)
+    except Exception:
+        return None
+
+    if len(pt) < 18 or pt[0] != 0:
+        return None
+
+    result = {
+        "serial": int.from_bytes(pt[1:5], "little"),
+        "battery_raw": int.from_bytes(pt[5:7], "little"),
+        "max_actions": pt[7],
+        "cloned_mask": pt[8],
+        "max_users": int.from_bytes(pt[9:11], "little"),
+        "production": int.from_bytes(pt[11:15], "little"),
+        "version": pt[15],
+        "dst": bool(pt[16]),
+        "sys_options": pt[17],
+        "name": pt[18:].decode("utf-8", "ignore") if len(pt) > 18 else "",
+    }
     return result

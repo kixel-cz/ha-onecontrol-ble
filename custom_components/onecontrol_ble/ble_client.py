@@ -66,7 +66,7 @@ class SoloMiniClient:
             _LOGGER.debug("Session: %s", resp.hex())
             our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
-            # 2. Try stored last_cc first
+            # 2. Zkus přímo s uloženým last_cc (CC optimalizace)
             current_cc = self.security.last_cc
             _LOGGER.debug("Trying with last_cc=%d", current_cc)
 
@@ -84,7 +84,6 @@ class SoloMiniClient:
                 _LOGGER.debug("RX: %s", r.hex())
 
                 if is_nack(r):
-                    # NACK — probe required
                     _LOGGER.debug("NACK on last_cc=%d, probing...", current_cc)
                     probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
                     await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
@@ -106,7 +105,6 @@ class SoloMiniClient:
                 elif len(r) == 16:
                     resp_cc = extract_response_cc(r)
                     if resp_cc is not None and resp_cc != current_cc + 1:
-                        # last_cc too low — got current CC
                         _LOGGER.debug("CC mismatch, retrying with CC=%d", resp_cc)
                         pkt3 = build_open_command(
                             self.security.session_key,
@@ -171,3 +169,85 @@ class SoloMiniClient:
                     new_cc = cc_from_resp
 
         return new_cc
+
+    async def get_system_info(self) -> dict | None:
+        if self._lock.locked():
+            return None
+        async with self._lock:
+            try:
+                return await self._do_get_system_info()
+            except Exception as e:
+                _LOGGER.warning("get_system_info failed: %s", e)
+                return None
+
+    async def _do_get_system_info(self) -> dict | None:
+        from .protocol import (
+            assemble_fragments,
+            build_get_system_info,
+            decrypt_system_info,
+        )
+
+        random_a = os.urandom(8)
+        q: asyncio.Queue[bytes] = asyncio.Queue()
+
+        async with BleakClient(self.address, timeout=CONNECT_TIMEOUT) as client:
+            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
+            await asyncio.sleep(0.3)
+            while not q.empty():
+                q.get_nowait()
+
+            # StartSession
+            await client.write_gatt_char(
+                TX_CHAR_UUID,
+                bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
+                response=True,
+            )
+            resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
+
+            # Probe
+            probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
+            await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
+            r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+            if is_nack(r):
+                return None
+            resp_cc = extract_response_cc(r)
+            if resp_cc is None:
+                return None
+
+            # GetSystemInfo
+            pkt = build_get_system_info(
+                self.security.session_key,
+                self.security.session_id,
+                resp_cc,
+                self.security.user_id,
+            )
+            await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
+
+            frags: list[bytes] = []
+            for _ in range(5):
+                try:
+                    rx = await asyncio.wait_for(q.get(), timeout=2.0)
+                    frags.append(rx)
+                    if (rx[0] >> 4) == 4:  # FragmentedPacket
+                        total = rx[2]
+                        if len(frags) >= total:
+                            break
+                    else:
+                        break
+                except TimeoutError:
+                    break
+
+            assembled = assemble_fragments(frags)
+            if not assembled:
+                return None
+
+            info = decrypt_system_info(
+                self.security.session_key,
+                self.security.session_id,
+                assembled,
+            )
+            if info:
+                self.security.battery_raw = info["battery_raw"]
+                _LOGGER.debug("SystemInfo: %s", info)
+            return info
