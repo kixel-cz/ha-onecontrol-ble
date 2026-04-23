@@ -47,7 +47,7 @@ async def async_setup_entry(
 ) -> None:
     client: SoloMiniClient = hass.data[DOMAIN][entry.entry_id]
 
-    coordinator = DataUpdateCoordinator(
+    coordinator: DataUpdateCoordinator[dict[str, Any] | None] = DataUpdateCoordinator(
         hass,
         _LOGGER,
         name=f"onecontrol_{entry.data['address']}",
@@ -68,7 +68,7 @@ class SoloMiniBatterySensor(CoordinatorEntity, SensorEntity):
 
     def __init__(
         self,
-        coordinator: DataUpdateCoordinator,
+        coordinator: DataUpdateCoordinator[dict[str, Any] | None],
         client: SoloMiniClient,
         entry: ConfigEntry,
     ) -> None:
