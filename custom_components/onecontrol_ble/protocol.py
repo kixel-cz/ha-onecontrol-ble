@@ -55,3 +55,19 @@ def extract_response_cc(packet: bytes) -> int | None:
     if len(packet) >= 16:
         return int.from_bytes(packet[12:14], "little")
     return None
+
+
+def parse_mitm_log(log_text: str) -> dict:
+    import re
+
+    result = {}
+    for key, pattern in [
+        ("ltk", r'"ltk":"([0-9A-Fa-f]+)"'),
+        ("session_key", r'"sessionKey":"([0-9A-Fa-f]+)"'),
+        ("session_id", r'"sessionID":"([0-9A-Fa-f]+)"'),
+        ("last_cc", r'"lastCC":(\d+)'),
+    ]:
+        m = re.search(pattern, log_text)
+        if m:
+            result[key] = m.group(1).upper() if key != "last_cc" else int(m.group(1))
+    return result

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 import voluptuous as vol
@@ -13,23 +12,11 @@ from homeassistant.components.bluetooth import (
     async_discovered_service_info,
 )
 
+from .protocol import parse_mitm_log
+
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
 SOLUMINI_SERVICE_UUID = "d973f2e0-b19e-11e2-9e96-0800200c9a66"
-
-
-def parse_mitm_log(log_text: str) -> dict:
-    result = {}
-    for key, pattern in [
-        ("ltk", r'"ltk":"([0-9A-Fa-f]+)"'),
-        ("session_key", r'"sessionKey":"([0-9A-Fa-f]+)"'),
-        ("session_id", r'"sessionID":"([0-9A-Fa-f]+)"'),
-        ("last_cc", r'"lastCC":(\d+)'),
-    ]:
-        m = re.search(pattern, log_text)
-        if m:
-            result[key] = m.group(1).upper() if key != "last_cc" else int(m.group(1))
-    return result
 
 
 def _is_hex(s: str, length: int) -> bool:
