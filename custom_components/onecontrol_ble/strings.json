@@ -2,42 +2,52 @@
   "title": "1Control SoloMini BLE",
   "config": {
     "step": {
-      "user": {
-        "title": "Add 1Control SoloMini",
-        "description": "Enter the BLE address of your SoloMini. Leave the LTK field empty — the integration will pair with the device automatically on first use.",
+      "pick_device": {
+        "title": "Select device",
+        "description": "The following SoloMini devices were found nearby.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "mitm": {
+        "title": "Security keys — mitmproxy log",
+        "description": "Optionally paste the contents of a mitmproxy log to auto-fill security keys. Leave empty to enter keys manually in the next step.",
+        "data": {
+          "mitm_log": "mitmproxy log contents (optional)"
+        },
+        "data_description": {
+          "mitm_log": "Full mitmproxy log contents. The integration will automatically extract LTK, Session Key and Session ID."
+        }
+      },
+      "device": {
+        "title": "Device security data",
+        "description": "Enter the BLE address and security keys for your SoloMini.",
         "data": {
           "address": "BLE address",
           "name": "Name",
-          "action": "Action number",
-          "ltk": "LTK key (optional)",
-          "user_id": "User ID (optional)",
-          "serial": "Serial number (optional)"
+          "ltk": "LTK key",
+          "session_key": "Session Key",
+          "session_id": "Session ID",
+          "user_id": "User ID",
+          "action": "Action number"
         },
         "data_description": {
-          "address": "BLE MAC address, e.g. EF:73:A3:39:3B:E4. Find it in a Bluetooth scanner app or in the 1Control app.",
-          "ltk": "16-byte hex key. Leave empty for automatic pairing — the integration will pair with the device on first use.",
-          "action": "Action number for opening the gate. Default value 1 works for most devices."
+          "address": "BLE MAC address. Pre-filled when auto-discovered.",
+          "ltk": "16-byte hex key from pairing (32 characters)",
+          "session_key": "Session key from 1Control server (32 characters)",
+          "session_id": "Session ID from 1Control server (16 characters)",
+          "action": "Action number for gate open (default 0)"
         }
       }
     },
     "error": {
-      "ltk_invalid": "LTK must be exactly 32 hexadecimal characters (16 bytes).",
-      "cannot_connect": "Cannot connect to the device. Check the BLE address and make sure the device is in range.",
-      "pairing_failed": "Pairing failed. Make sure the device is in pairing mode and try again."
+      "invalid_hex": "Invalid hex format or wrong length.",
+      "parse_failed": "Could not extract data from log. Make sure the log contains a security API call.",
+      "cannot_connect": "Cannot connect to device. Check the BLE address.",
+      "already_configured": "Device is already configured."
     },
     "abort": {
-      "already_configured": "This device is already configured."
-    }
-  },
-  "entity": {
-    "cover": {
-      "onecontrol_ble": {
-        "state": {
-          "open": "Open",
-          "closed": "Closed",
-          "opening": "Opening"
-        }
-      }
+      "already_configured": "Device is already configured."
     }
   }
 }

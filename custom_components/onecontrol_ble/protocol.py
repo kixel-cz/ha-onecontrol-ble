@@ -16,15 +16,14 @@ CCM_TAG_LEN = 6
 
 @dataclass
 class SecurityData:
-    ltk: bytes  # Long Term Key — z párování, trvalý
-    session_key: bytes  # SHA256(LTK+sessionID)[:16] — trvalý
-    session_id: bytes  # sessionID — trvalý
+    ltk: bytes  # Long Term Key — from pairing
+    session_key: bytes  # SHA256(LTK+sessionID)[:16]
+    session_id: bytes  # sessionID
     user_id: int = 0
-    last_cc: int = 0  # Poslední známý CC — optimalizace, nepovinný
+    last_cc: int = 0  # Last known CC — optional
 
 
 def derive_session(ltk: bytes, random_a: bytes, random_b: bytes):
-    """Derivuje sessionID a sessionKey z LTK + random values."""
     data = random_a[:8] + random_b[:8]
     sid = hashlib.sha256(data).digest()[:8]
     sk = hashlib.sha256(ltk[:16] + sid).digest()[:16]
@@ -38,7 +37,6 @@ def build_tlv(payload: bytes) -> bytes:
 def build_open_command(
     session_key: bytes, session_id: bytes, last_cc: int, user_id: int = 0, action: int = 0
 ) -> bytes:
-    """Sestaví open příkaz. cmd=0x01, plaintext=[0x01, action]."""
     cc = last_cc + 1
     nonce = session_id[:8] + struct.pack("<I", cc)
     aad = struct.pack("<H", user_id) + struct.pack("<I", cc) + b"\x01"
@@ -54,7 +52,6 @@ def is_nack(packet: bytes) -> bool:
 
 
 def extract_response_cc(packet: bytes) -> int | None:
-    """Extrahuje CC z response paketu (16B)."""
     if len(packet) >= 16:
         return int.from_bytes(packet[12:14], "little")
     return None

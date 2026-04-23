@@ -1,4 +1,4 @@
-"""Config flow pro 1Control SoloMini BLE."""
+"""Config flow for 1Control SoloMini BLE."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ SOLUMINI_SERVICE_UUID = "d973f2e0-b19e-11e2-9e96-0800200c9a66"
 
 
 def parse_mitm_log(log_text: str) -> dict:
-    """Extrahuje security data z mitmproxy logu."""
     result = {}
     for key, pattern in [
         ("ltk", r'"ltk":"([0-9A-Fa-f]+)"'),
@@ -38,7 +37,7 @@ def _is_hex(s: str, length: int) -> bool:
     return len(s) == length and all(c in "0123456789abcdef" for c in s)
 
 
-class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN): # type: ignore[call-arg]
     VERSION = 1
 
     def __init__(self):
@@ -50,7 +49,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> config_entries.FlowResult:
-        """Automaticky objevené BLE zařízení."""
         address = discovery_info.address
         await self.async_set_unique_id(address)
         self._abort_if_unique_id_configured()
@@ -65,8 +63,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Ruční spuštění — nejdřív nabídni nalezená zařízení."""
-        # Najdi dostupná SoloMini zařízení
         for info in async_discovered_service_info(self.hass, connectable=True):
             if SOLUMINI_SERVICE_UUID in [s.lower() for s in info.service_uuids]:
                 self._discovered_devices[info.address] = (
@@ -80,7 +76,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_pick_device(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Výběr z nalezených zařízení."""
         if user_input is not None:
             address = user_input["address"]
             await self.async_set_unique_id(address)
@@ -90,7 +85,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._discovered_name = name.split(" (")[0]
             return await self.async_step_mitm()
 
-        # Přidej možnost ruční zadání
         devices = dict(self._discovered_devices)
         devices["manual"] = "Zadat ručně..."
 
@@ -106,7 +100,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_mitm(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Krok: Volitelné vložení mitmproxy logu."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -133,7 +126,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_device(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Krok: BLE adresa a bezpečnostní klíče."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -166,7 +158,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     },
                 )
 
-        # Pokud byl vybrán "manual" v pick_device
         default_address = self._discovered_address if self._discovered_address != "manual" else ""
 
         schema = vol.Schema(

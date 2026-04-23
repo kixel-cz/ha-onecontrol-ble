@@ -55,7 +55,7 @@ class SoloMiniClient:
             while not q.empty():
                 q.get_nowait()
 
-            # 1. StartSession — nutný pro BLE handshake
+            # 1. StartSession — required for BLE handshake
             await client.write_gatt_char(
                 TX_CHAR_UUID, bytes([0x00, 0x0A, 0x90, 0x02]) + random_a, response=True
             )
@@ -63,9 +63,9 @@ class SoloMiniClient:
             _LOGGER.debug("Session: %s", resp.hex())
             our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
-            # 2. Zkus open přímo s uloženým last_cc
-            #    Pokud last_cc > aktuální CC zařízení → NACK, pak probe
-            #    Pokud last_cc < aktuální CC → zařízení vrátí aktuální CC
+            # 2. Try stored last_cc first
+            #    If last_cc > current CC -> NACK, then probe
+            #    If last_cc < current CC -> current CC returned
             current_cc = self.security.last_cc
             _LOGGER.debug("Trying with last_cc=%d", current_cc)
 
@@ -83,7 +83,7 @@ class SoloMiniClient:
                 _LOGGER.debug("RX: %s", r.hex())
 
                 if is_nack(r):
-                    # NACK — last_cc je příliš vysoké, potřebujeme probe
+                    # NACK — probe required
                     _LOGGER.debug("NACK on last_cc=%d, probing...", current_cc)
                     probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
                     await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
@@ -92,7 +92,7 @@ class SoloMiniClient:
                     if resp_cc is None:
                         return False
                     _LOGGER.debug("Probe CC=%d", resp_cc)
-                    # Skutečný open s aktuálním CC
+                    # Real open with current CC
                     pkt2 = build_open_command(
                         self.security.session_key,
                         self.security.session_id,
@@ -110,11 +110,11 @@ class SoloMiniClient:
                         new_cc = resp_cc + 1
 
                 elif len(r) == 16:
-                    # Response — zkontroluj zda CC v odpovědi odpovídá
+                    # Response — check CC in response
                     resp_cc = extract_response_cc(r)
                     if resp_cc is not None and resp_cc != current_cc + 1:
-                        # last_cc byl nízký — zařízení vrátilo aktuální CC
-                        # Pošli open se správným CC
+                        # last_cc was too low — current CC returned
+                        # Use right CC
                         _LOGGER.debug("CC mismatch, retrying with CC=%d", resp_cc)
                         pkt3 = build_open_command(
                             self.security.session_key,
@@ -139,7 +139,7 @@ class SoloMiniClient:
             except TimeoutError:
                 new_cc = current_cc + 1
 
-            # Ulož aktuální CC pro příští volání
+            # Store current CC for next call
             self.security.last_cc = new_cc
             _LOGGER.info("Gate opened! last_cc updated to %d", new_cc)
             return True
