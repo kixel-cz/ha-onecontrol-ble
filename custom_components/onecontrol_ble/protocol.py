@@ -1,6 +1,4 @@
-"""
-1Control SoloMini RE — BLE protocol.
-"""
+"""1Control SoloMini RE — BLE protocol."""
 from __future__ import annotations
 import hashlib, struct
 from dataclasses import dataclass, field
@@ -12,25 +10,31 @@ RX_CHAR_UUID = "d973f2e2-b19e-11e2-9e96-0800200c9a66"
 NACK = bytes([0x00, 0x02, 0x01, 0xCE])
 CCM_TAG_LEN = 6
 
+
 @dataclass
 class SecurityData:
-    ltk:         bytes        # Long Term Key
-    session_key: bytes        # SHA256(LTK+sessionID)[:16]
-    session_id:  bytes        # sessionID
+    ltk:         bytes        # Long Term Key — z párování, trvalý
+    session_key: bytes        # SHA256(LTK+sessionID)[:16] — trvalý
+    session_id:  bytes        # sessionID — trvalý
     user_id:     int = 0
-    last_cc:     int = 0
+    last_cc:     int = 0      # Poslední známý CC — optimalizace, nepovinný
+
 
 def derive_session(ltk: bytes, random_a: bytes, random_b: bytes):
+    """Derivuje sessionID a sessionKey z LTK + random values."""
     data = random_a[:8] + random_b[:8]
     sid = hashlib.sha256(data).digest()[:8]
     sk  = hashlib.sha256(ltk[:16] + sid).digest()[:16]
     return sid, sk
 
+
 def build_tlv(payload: bytes) -> bytes:
     return bytes([0x00, len(payload)]) + payload
 
+
 def build_open_command(session_key: bytes, session_id: bytes,
                        last_cc: int, user_id: int = 0, action: int = 0) -> bytes:
+    """Sestaví open příkaz. cmd=0x01, plaintext=[0x01, action]."""
     cc     = last_cc + 1
     nonce  = session_id[:8] + struct.pack("<I", cc)
     aad    = struct.pack("<H", user_id) + struct.pack("<I", cc) + b"\x01"
@@ -40,5 +44,13 @@ def build_open_command(session_key: bytes, session_id: bytes,
     payload = b"\x01" + ct + tag + struct.pack("<H", user_id) + struct.pack("<I", cc)
     return build_tlv(payload)
 
+
 def is_nack(packet: bytes) -> bool:
     return packet[:4] == NACK
+
+
+def extract_response_cc(packet: bytes) -> Optional[int]:
+    """Extrahuje CC z response paketu (16B)."""
+    if len(packet) >= 16:
+        return int.from_bytes(packet[12:14], "little")
+    return None

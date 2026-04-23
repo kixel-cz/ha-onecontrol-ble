@@ -28,6 +28,7 @@ async def async_setup_entry(
         session_key=bytes.fromhex(entry.data["session_key"]),
         session_id=bytes.fromhex(entry.data["session_id"]),
         user_id=entry.data.get("user_id", 0),
+        last_cc=entry.data.get("last_cc", 0),
     )
     client = SoloMiniClient(
         address=entry.data["address"],
@@ -50,6 +51,7 @@ class SoloMiniCover(CoverEntity):
 
     def __init__(self, client: SoloMiniClient, entry: ConfigEntry) -> None:
         self._client = client
+        self._entry  = entry
         self._attr_unique_id = f"onecontrol_{entry.data['address'].replace(':', '').lower()}"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, entry.data["address"])},
@@ -66,6 +68,11 @@ class SoloMiniCover(CoverEntity):
         self._attr_is_opening = False
         if success:
             self._attr_is_closed = False
+            # Ulož aktualizovaný last_cc do config entry
+            self.hass.config_entries.async_update_entry(
+                self._entry,
+                data={**self._entry.data, "last_cc": self._client.security.last_cc},
+            )
         else:
             _LOGGER.error("Failed to open gate %s", self._client.address)
         self.async_write_ha_state()

@@ -31,6 +31,13 @@
           "session_id": "Session ID from 1Control server (16 characters)",
           "action": "Action number for gate open (default 0)"
         }
+      },
+      "pick_device": {
+        "title": "Select device",
+        "description": "The following SoloMini devices were found nearby.",
+        "data": {
+          "address": "Device"
+        }
       }
     },
     "error": {

@@ -31,6 +31,13 @@
           "session_id": "Session ID ze serveru 1Control (16 znaků)",
           "action": "Číslo akce pro otevření brány (výchozí 0)"
         }
+      },
+      "pick_device": {
+        "title": "Vyberte zařízení",
+        "description": "V dosahu byla nalezena tato zařízení SoloMini.",
+        "data": {
+          "address": "Zařízení"
+        }
       }
     },
     "error": {
