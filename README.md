@@ -4,7 +4,7 @@
 [![License: MIT][license-badge]][license-url]
 [![HA Version][ha-badge]][ha-url]
 
-Local Home Assistant integration for **1Control SoloMini RE** garage door openers via Bluetooth. No cloud dependency during operation — everything works directly over BLE.
+Local Home Assistant integration for **1Control SoloMini** via Bluetooth. No cloud dependency during operation — everything works directly over BLE.
 
 ## Features
 
