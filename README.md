@@ -96,7 +96,7 @@ automation:
     action:
       - service: cover.open_cover
         target:
-          entity_id: cover.solumini_gate
+          entity_id: cover.solomini_gate
 ```
 
 ---
