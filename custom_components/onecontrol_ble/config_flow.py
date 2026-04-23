@@ -37,7 +37,7 @@ def _is_hex(s: str, length: int) -> bool:
     return len(s) == length and all(c in "0123456789abcdef" for c in s)
 
 
-class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN): # type: ignore[call-arg]
+class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     VERSION = 1
 
     def __init__(self):
