@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -206,7 +206,7 @@ class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
         value = self.coordinator.data.get(self.entity_description.key)
         # Převod epoch na datum
         if self.entity_description.key == "production" and value:
-            return datetime.fromtimestamp(value, tz=timezone.utc).strftime("%Y-%m-%d")
+            return datetime.fromtimestamp(value, tz=UTC).strftime("%Y-%m-%d")
         # Převod version na string
         if self.entity_description.key == "version" and value is not None:
             return f"1.{value}"
