@@ -61,7 +61,7 @@ class SoloMiniCover(CoverEntity):
             identifiers={(DOMAIN, entry.data["address"])},
             name=entry.data.get("name", "SoloMini"),
             manufacturer="1Control",
-            model="SoloMini RE",
+            model="SoloMini",
             sw_version="1.7",
         )
 

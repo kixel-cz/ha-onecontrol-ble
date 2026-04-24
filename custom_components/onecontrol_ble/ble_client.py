@@ -1,4 +1,4 @@
-"""1Control SoloMini RE — BLE client."""
+"""1Control SoloMini — BLE client."""
 
 from __future__ import annotations
 

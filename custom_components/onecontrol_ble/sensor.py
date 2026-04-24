@@ -92,7 +92,7 @@ class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, An
             name=self._entry.data.get("name", "SoloMini"),
             suggested_area=None,
             manufacturer="1Control",
-            model="SoloMini RE",
+            model="SoloMini",
             sw_version=sw_version,
             hw_version=hw_version,
             serial_number=str(data.get("serial")) if data.get("serial") else None,
