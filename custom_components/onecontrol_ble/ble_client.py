@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from typing import Any
 
 from bleak import BleakClient
 
@@ -250,4 +251,5 @@ class SoloMiniClient:
             if info:
                 self.security.battery_raw = info["battery_raw"]
                 _LOGGER.debug("SystemInfo: %s", info)
-            return info
+                return info
+            return {}

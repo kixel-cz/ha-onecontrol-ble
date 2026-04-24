@@ -47,8 +47,8 @@ def build_open_command(
     nonce = session_id[:8] + struct.pack("<I", cc)
     aad = struct.pack("<H", user_id) + struct.pack("<I", cc) + b"\x01"
     cipher = AES.new(session_key, AES.MODE_CCM, nonce=nonce, mac_len=CCM_TAG_LEN)
-    cipher.update(aad)
-    ct, tag = cipher.encrypt_and_digest(bytes([0x01, action & 0xFF]))
+    cipher.update(aad)  # type: ignore[union-attr]
+    ct, tag = cipher.encrypt_and_digest(bytes([0x01, action & 0xFF]))  # type: ignore[union-attr]
     payload = b"\x01" + ct + tag + struct.pack("<H", user_id) + struct.pack("<I", cc)
     return build_tlv(payload)
 
@@ -98,8 +98,8 @@ def build_get_system_info(
     nonce = session_id[:8] + struct.pack("<I", cc)
     aad = struct.pack("<H", user_id) + struct.pack("<I", cc) + b"\x14"
     cipher = AES.new(session_key, AES.MODE_CCM, nonce=nonce, mac_len=CCM_TAG_LEN)
-    cipher.update(aad)
-    ct, tag = cipher.encrypt_and_digest(b"\xff")
+    cipher.update(aad)  # type: ignore[union-attr]
+    ct, tag = cipher.encrypt_and_digest(b"\xff")  # type: ignore[union-attr]
     payload = b"\x14" + ct + tag + struct.pack("<H", user_id) + struct.pack("<I", cc)
     return build_tlv(payload)
 
@@ -141,8 +141,8 @@ def decrypt_system_info(
 
     try:
         cipher = AES.new(session_key, AES.MODE_CCM, nonce=nonce, mac_len=CCM_TAG_LEN)
-        cipher.update(aad)
-        pt = cipher.decrypt_and_verify(ct, tag)
+        cipher.update(aad)  # type: ignore[union-attr]
+        pt = cipher.decrypt_and_verify(ct, tag)  # type: ignore[union-attr]
     except Exception:
         return None
 

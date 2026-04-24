@@ -26,3 +26,12 @@ pythonpath = ["."]
 [[tool.mypy.overrides]]
 module = "custom_components.onecontrol_ble.sensor"
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "Crypto.*"
+ignore_missing_imports = true
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "custom_components.onecontrol_ble.protocol"
+ignore_errors = true
