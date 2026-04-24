@@ -49,7 +49,7 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
-        key="device_name",
+        key="name",
         name="Device Name",
         icon="mdi:label",
     ),
