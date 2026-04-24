@@ -54,13 +54,13 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         icon="mdi:label",
     ),
     SensorEntityDescription(
-        key="firmware_version",
+        key="version",
         name="Firmware Version",
         icon="mdi:chip",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
-        key="production_date",
+        key="production",
         name="Production Date",
         icon="mdi:calendar",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -92,7 +92,7 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
-        key="dst_enabled",
+        key="dst",
         name="DST Enabled",
         icon="mdi:clock-time-eight",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -203,4 +203,11 @@ class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
     def native_value(self) -> Any:
         if not self.coordinator.data:
             return None
-        return self.coordinator.data.get(self.entity_description.key)
+        value = self.coordinator.data.get(self.entity_description.key)
+        # Převod epoch na datum
+        if self.entity_description.key == "production" and value:
+            return datetime.fromtimestamp(value, tz=timezone.utc).strftime("%Y-%m-%d")
+        # Převod version na string
+        if self.entity_description.key == "version" and value is not None:
+            return f"1.{value}"
+        return value
