@@ -1,18 +1,18 @@
-"""Battery sensor for 1Control SoloMini BLE."""
-
+"""Battery and system sensors for 1Control SoloMini BLE."""
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -28,7 +28,7 @@ DOMAIN = "onecontrol_ble"
 SCAN_INTERVAL = timedelta(hours=1)
 
 BATTERY_HIGH = 3200  # TODO
-BATTERY_LOW = 1800  # TODO
+BATTERY_LOW  = 1800  # TODO
 
 
 def raw_to_percent(raw: int) -> int:
@@ -37,6 +37,72 @@ def raw_to_percent(raw: int) -> int:
     if raw <= BATTERY_LOW:
         return 0
     return int((raw - BATTERY_LOW) / (BATTERY_HIGH - BATTERY_LOW) * 100)
+
+
+SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
+    SensorEntityDescription(
+        key="battery_raw",
+        name="Battery Raw",
+        icon="mdi:battery-unknown",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="device_name",
+        name="Device Name",
+        icon="mdi:label",
+    ),
+    SensorEntityDescription(
+        key="firmware_version",
+        name="Firmware Version",
+        icon="mdi:chip",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="production_date",
+        name="Production Date",
+        icon="mdi:calendar",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="serial",
+        name="Serial Number",
+        icon="mdi:identifier",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="max_actions",
+        name="Max Actions",
+        icon="mdi:counter",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="max_users",
+        name="Max Users",
+        icon="mdi:account-multiple",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="cloned_mask",
+        name="Cloned Mask",
+        icon="mdi:remote",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="dst_enabled",
+        name="DST Enabled",
+        icon="mdi:clock-time-eight",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="sys_options",
+        name="System Options",
+        icon="mdi:cog",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+)
 
 
 async def async_setup_entry(
@@ -53,11 +119,36 @@ async def async_setup_entry(
         update_method=client.get_system_info,
         update_interval=SCAN_INTERVAL,
     )
-    async_add_entities([SoloMiniBatterySensor(coordinator, client, entry)])
+
+    entities: list[SensorEntity] = [SoloMiniBatterySensor(coordinator, client, entry)]
+    for description in SENSOR_DESCRIPTIONS:
+        entities.append(SoloMiniInfoSensor(coordinator, entry, description))
+
+    async_add_entities(entities)
     hass.async_create_task(coordinator.async_request_refresh())
 
 
-class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
+def _device_info(entry: ConfigEntry, data: dict[str, Any]) -> dr.DeviceInfo:
+    version = data.get("version")
+    production = data.get("production")
+    return dr.DeviceInfo(
+        identifiers={(DOMAIN, entry.data["address"])},
+        name=entry.data.get("name", "SoloMini"),
+        manufacturer="1Control",
+        model="SoloMini RE",
+        sw_version=f"1.{version}" if version else None,
+        hw_version=(
+            datetime.fromtimestamp(production, tz=timezone.utc).strftime("%Y-%m-%d")
+            if production
+            else None
+        ),
+        serial_number=str(data["serial"]) if data.get("serial") else None,
+    )
+
+
+class SoloMiniBatterySensor(
+    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity
+):
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -76,29 +167,10 @@ class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, An
         self._attr_unique_id = (
             f"onecontrol_{entry.data['address'].replace(':', '').lower()}_battery"
         )
-        self._update_device_info()
-
-    def _update_device_info(self) -> None:
-        data = self.coordinator.data or {}
-        version = data.get("version")
-        sw_version = f"1.{version}" if version else None
-        production = data.get("production")
-        hw_version = (
-            datetime.fromtimestamp(production, tz=UTC).strftime("%Y-%m-%d") if production else None
-        )
-        self._attr_device_info = dr.DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data["address"])},
-            name=self._entry.data.get("name", "SoloMini"),
-            suggested_area=None,
-            manufacturer="1Control",
-            model="SoloMini",
-            sw_version=sw_version,
-            hw_version=hw_version,
-            serial_number=str(data.get("serial")) if data.get("serial") else None,
-        )
+        self._attr_device_info = _device_info(entry, coordinator.data or {})
 
     def _handle_coordinator_update(self) -> None:
-        self._update_device_info()
+        self._attr_device_info = _device_info(self._entry, self.coordinator.data or {})
         super()._handle_coordinator_update()
 
     @property
@@ -110,41 +182,31 @@ class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, An
             return None
         return raw_to_percent(raw)
 
+
+class SoloMiniInfoSensor(
+    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity
+):
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        entry: ConfigEntry,
+        description: SensorEntityDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._entry = entry
+        self._attr_unique_id = (
+            f"onecontrol_{entry.data['address'].replace(':', '').lower()}"
+            f"_{description.key}"
+        )
+        self._attr_device_info = dr.DeviceInfo(
+            identifiers={(DOMAIN, entry.data["address"])},
+        )
+
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        data = self.coordinator.data or {}
-        attrs: dict[str, Any] = {}
-
-        if (raw := data.get("battery_raw")) is not None:
-            attrs["battery_raw"] = raw
-
-        if (serial := data.get("serial")) is not None:
-            attrs["serial"] = serial
-
-        if name := data.get("name"):
-            attrs["device_name"] = name
-
-        if (version := data.get("version")) is not None:
-            attrs["firmware_version"] = f"1.{version}"
-
-        if production := data.get("production"):
-            attrs["production_date"] = datetime.fromtimestamp(production, tz=UTC).strftime(
-                "%Y-%m-%d"
-            )
-
-        if (max_actions := data.get("max_actions")) is not None:
-            attrs["max_actions"] = max_actions
-
-        if (max_users := data.get("max_users")) is not None:
-            attrs["max_users"] = max_users
-
-        if (cloned := data.get("cloned_mask")) is not None:
-            attrs["cloned_mask"] = cloned
-
-        if (dst := data.get("dst")) is not None:
-            attrs["dst_enabled"] = dst
-
-        if (sys_opts := data.get("sys_options")) is not None:
-            attrs["system_options"] = sys_opts
-
-        return attrs
+    def native_value(self) -> Any:
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.get(self.entity_description.key)
