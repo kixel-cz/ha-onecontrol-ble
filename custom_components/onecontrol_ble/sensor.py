@@ -53,9 +53,8 @@ async def async_setup_entry(
         update_method=client.get_system_info,
         update_interval=SCAN_INTERVAL,
     )
-    await coordinator.async_config_entry_first_refresh()
-
     async_add_entities([SoloMiniBatterySensor(coordinator, client, entry)])
+    hass.async_create_task(coordinator.async_request_refresh())
 
 
 class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
