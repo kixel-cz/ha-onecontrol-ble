@@ -142,6 +142,7 @@ def _device_info(entry: ConfigEntry, data: dict[str, Any]) -> dr.DeviceInfo:
             datetime.fromtimestamp(production, tz=UTC).strftime("%Y-%m-%d") if production else None
         ),
         serial_number=str(data["serial"]) if data.get("serial") else None,
+        connections={(dr.CONNECTION_BLUETOOTH, entry.data["address"])},
     )
 
 

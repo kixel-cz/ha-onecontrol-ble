@@ -1,4 +1,4 @@
-"""1Control SoloMini — BLE client."""
+"""1Control SoloMini RE — BLE client."""
 
 from __future__ import annotations
 
@@ -8,6 +8,11 @@ import os
 from typing import Any
 
 from bleak import BleakClient
+from bleak.backends.device import BLEDevice
+from bleak_retry_connector import (
+    BleakClientWithServiceCache,
+    establish_connection,
+)
 
 from .protocol import (
     RX_CHAR_UUID,
@@ -26,11 +31,31 @@ RESPONSE_TIMEOUT = 8.0
 
 
 class SoloMiniClient:
-    def __init__(self, address: str, security: SecurityData, action: int = 0):
+    def __init__(
+        self,
+        address: str,
+        security: SecurityData,
+        action: int = 0,
+        ble_device: BLEDevice | None = None,
+    ):
         self.address = address
         self.security = security
         self.action = action
+        self.ble_device = ble_device
         self._lock = asyncio.Lock()
+
+    def set_ble_device(self, ble_device: BLEDevice) -> None:
+        self.ble_device = ble_device
+
+    async def _get_client(self) -> BleakClient:
+        if self.ble_device is not None:
+            return await establish_connection(
+                BleakClientWithServiceCache,
+                self.ble_device,
+                self.address,
+                max_attempts=3,
+            )
+        return BleakClient(self.address, timeout=CONNECT_TIMEOUT)
 
     async def open_gate(self) -> bool:
         if self._lock.locked():
@@ -50,14 +75,14 @@ class SoloMiniClient:
         random_a = os.urandom(8)
         q: asyncio.Queue[bytes] = asyncio.Queue()
 
-        async with BleakClient(self.address, timeout=CONNECT_TIMEOUT) as client:
+        client = await self._get_client()
+        async with client:
             _LOGGER.debug("Connected to %s", self.address)
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
                 q.get_nowait()
 
-            # 1. StartSession
             await client.write_gatt_char(
                 TX_CHAR_UUID,
                 bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
@@ -67,7 +92,6 @@ class SoloMiniClient:
             _LOGGER.debug("Session: %s", resp.hex())
             our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
-            # 2. Zkus přímo s uloženým last_cc (CC optimalizace)
             current_cc = self.security.last_cc
             _LOGGER.debug("Trying with last_cc=%d", current_cc)
 
@@ -172,14 +196,19 @@ class SoloMiniClient:
         return new_cc
 
     async def get_system_info(self) -> dict[str, Any]:
-        if self._lock.locked():
-            return {}
-        async with self._lock:
-            try:
-                return await self._do_get_system_info()
-            except Exception as e:
-                _LOGGER.warning("get_system_info failed: %s", e)
-                return {}
+        for attempt in range(3):
+            if self._lock.locked():
+                _LOGGER.debug("Lock busy, waiting... attempt %d", attempt + 1)
+                await asyncio.sleep(5)
+                continue
+            async with self._lock:
+                try:
+                    return await self._do_get_system_info()
+                except Exception as e:
+                    _LOGGER.warning("get_system_info failed: %s", e)
+                    if attempt < 2:
+                        await asyncio.sleep(10)
+        return {}
 
     async def _do_get_system_info(self) -> dict[str, Any]:
         from .protocol import (
@@ -191,7 +220,8 @@ class SoloMiniClient:
         random_a = os.urandom(8)
         q: asyncio.Queue[bytes] = asyncio.Queue()
 
-        async with BleakClient(self.address, timeout=CONNECT_TIMEOUT) as client:
+        client = await self._get_client()
+        async with client:
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
@@ -225,12 +255,13 @@ class SoloMiniClient:
             )
             await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
 
+            # Get fragments
             frags: list[bytes] = []
             for _ in range(5):
                 try:
                     rx = await asyncio.wait_for(q.get(), timeout=2.0)
                     frags.append(rx)
-                    if (rx[0] >> 4) == 4:  # FragmentedPacket
+                    if (rx[0] >> 4) == 4:
                         total = rx[2]
                         if len(frags) >= total:
                             break
