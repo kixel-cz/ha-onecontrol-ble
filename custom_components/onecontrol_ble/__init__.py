@@ -7,6 +7,7 @@ import logging
 from homeassistant.components.bluetooth import (
     BluetoothCallbackMatcher,
     BluetoothChange,
+    BluetoothScanningMode,
     BluetoothServiceInfoBleak,
     async_ble_device_from_address,
     async_register_callback,
@@ -58,7 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass,
             _async_update_ble,
             BluetoothCallbackMatcher(address=address),
-            BluetoothChange.ADVERTISEMENT,
+            BluetoothScanningMode.ACTIVE,
         )
     )
 
