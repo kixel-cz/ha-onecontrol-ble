@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -27,9 +27,8 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
 SCAN_INTERVAL = timedelta(hours=1)
 
-BATTERY_HIGH = 3200  # TODO: calibrate
-BATTERY_MED = 2400  # TODO: calibrate
-BATTERY_LOW = 1800  # TODO: calibrate
+BATTERY_HIGH = 3200  # TODO
+BATTERY_LOW = 1800  # TODO
 
 
 def raw_to_percent(raw: int) -> int:
@@ -59,7 +58,7 @@ async def async_setup_entry(
     async_add_entities([SoloMiniBatterySensor(coordinator, client, entry)])
 
 
-class SoloMiniBatterySensor(CoordinatorEntity, SensorEntity):
+class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -74,18 +73,34 @@ class SoloMiniBatterySensor(CoordinatorEntity, SensorEntity):
     ) -> None:
         super().__init__(coordinator)
         self._client = client
+        self._entry = entry
         self._attr_unique_id = (
             f"onecontrol_{entry.data['address'].replace(':', '').lower()}_battery"
         )
+        self._update_device_info()
+
+    def _update_device_info(self) -> None:
+        data = self.coordinator.data or {}
+        version = data.get("version")
+        sw_version = f"1.{version}" if version else None
+        production = data.get("production")
+        hw_version = (
+            datetime.fromtimestamp(production, tz=UTC).strftime("%Y-%m-%d") if production else None
+        )
         self._attr_device_info = dr.DeviceInfo(
-            identifiers={(DOMAIN, entry.data["address"])},
-            name=entry.data.get("name", "SoloMini"),
+            identifiers={(DOMAIN, self._entry.data["address"])},
+            name=self._entry.data.get("name", "SoloMini"),
+            suggested_area=None,
             manufacturer="1Control",
             model="SoloMini RE",
-            sw_version=str(self.coordinator.data.get("version", ""))
-            if self.coordinator.data
-            else None,
+            sw_version=sw_version,
+            hw_version=hw_version,
+            serial_number=str(data.get("serial")) if data.get("serial") else None,
         )
+
+    def _handle_coordinator_update(self) -> None:
+        self._update_device_info()
+        super()._handle_coordinator_update()
 
     @property
     def native_value(self) -> int | None:
@@ -98,14 +113,39 @@ class SoloMiniBatterySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        if not self.coordinator.data:
-            return {}
-        data = self.coordinator.data
-        return {
-            "battery_raw": data.get("battery_raw"),
-            "name": data.get("name"),
-            "version": data.get("version"),
-            "serial": data.get("serial"),
-            "max_actions": data.get("max_actions"),
-            "production": data.get("production"),
-        }
+        data = self.coordinator.data or {}
+        attrs: dict[str, Any] = {}
+
+        if (raw := data.get("battery_raw")) is not None:
+            attrs["battery_raw"] = raw
+
+        if (serial := data.get("serial")) is not None:
+            attrs["serial"] = serial
+
+        if name := data.get("name"):
+            attrs["device_name"] = name
+
+        if (version := data.get("version")) is not None:
+            attrs["firmware_version"] = f"1.{version}"
+
+        if production := data.get("production"):
+            attrs["production_date"] = datetime.fromtimestamp(production, tz=UTC).strftime(
+                "%Y-%m-%d"
+            )
+
+        if (max_actions := data.get("max_actions")) is not None:
+            attrs["max_actions"] = max_actions
+
+        if (max_users := data.get("max_users")) is not None:
+            attrs["max_users"] = max_users
+
+        if (cloned := data.get("cloned_mask")) is not None:
+            attrs["cloned_mask"] = cloned
+
+        if (dst := data.get("dst")) is not None:
+            attrs["dst_enabled"] = dst
+
+        if (sys_opts := data.get("sys_options")) is not None:
+            attrs["system_options"] = sys_opts
+
+        return attrs
