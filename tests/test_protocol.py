@@ -1,13 +1,20 @@
 """BLE protocol tests (protocol.py)"""
 
+from __future__ import annotations
+
 import hashlib
+import struct
 
 from custom_components.onecontrol_ble.protocol import (
     NACK,
+    assemble_fragments,
+    build_get_system_info,
     build_open_command,
+    decrypt_system_info,
     derive_session,
     extract_response_cc,
     is_nack,
+    parse_greeting,
 )
 from tests.conftest import (
     TEST_LTK,
@@ -15,6 +22,11 @@ from tests.conftest import (
     TEST_RANDOM_B,
     TEST_SESSION_ID,
     TEST_SESSION_KEY,
+)
+
+TEST_GREETING = bytes.fromhex("0011014940cabe843d90f4330a00002a000000")
+TEST_ASSEMBLED = bytes.fromhex(
+    "14f481f9a38e9161bf69c43c44a5821a3ec71f8a3d59ed029668827376000002000000"
 )
 
 
@@ -148,3 +160,139 @@ class TestExtractResponseCc:
     def test_exactly_16_bytes(self):
         pkt = bytes([0] * 12 + [0x01, 0x00, 0x00, 0x00])
         assert extract_response_cc(pkt) == 1
+
+
+class TestParseGreeting:
+    def test_valid_greeting(self):
+        result = parse_greeting(TEST_GREETING)
+        assert result is not None
+        sid, battery_raw, uid, cc = result
+        assert sid == bytes.fromhex(TEST_SESSION_ID)
+        assert battery_raw == 2611
+        assert uid == 0
+        assert cc == 42
+
+    def test_wrong_type_byte(self):
+        bad = bytes([0x00, 0x12]) + TEST_GREETING[2:]
+        assert parse_greeting(bad) is None
+
+    def test_wrong_first_byte(self):
+        bad = bytes([0x01]) + TEST_GREETING[1:]
+        assert parse_greeting(bad) is None
+
+    def test_too_short(self):
+        assert parse_greeting(bytes(10)) is None
+
+    def test_empty(self):
+        assert parse_greeting(b"") is None
+
+    def test_different_battery(self):
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        greeting = (
+            bytes([0x00, 0x11, 0x01])
+            + sid
+            + struct.pack("<H", 3200)
+            + struct.pack("<H", 0)
+            + struct.pack("<H", 100)
+            + bytes([0x00, 0x00])
+        )
+        result = parse_greeting(greeting)
+        assert result is not None
+        _, battery_raw, _, cc = result
+        assert battery_raw == 3200
+        assert cc == 100
+
+
+class TestBuildGetSystemInfo:
+    def test_length(self):
+        pkt = build_get_system_info(
+            bytes.fromhex(TEST_SESSION_KEY),
+            bytes.fromhex(TEST_SESSION_ID),
+            0,
+        )
+        # cmd(1) + ct(1) + tag(6) + uid(2) + cc(4) = 14B + TLV(2) = 16B
+        assert len(pkt) == 16
+
+    def test_tlv_header(self):
+        pkt = build_get_system_info(
+            bytes.fromhex(TEST_SESSION_KEY),
+            bytes.fromhex(TEST_SESSION_ID),
+            0,
+        )
+        assert pkt[0] == 0x00
+        assert pkt[2] == 0x14  # cmd byte
+
+    def test_different_cc_different_packet(self):
+        sk = bytes.fromhex(TEST_SESSION_KEY)
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        pkt1 = build_get_system_info(sk, sid, 0)
+        pkt2 = build_get_system_info(sk, sid, 1)
+        assert pkt1 != pkt2
+
+    def test_cc_in_packet(self):
+        sk = bytes.fromhex(TEST_SESSION_KEY)
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        pkt = build_get_system_info(sk, sid, 41)
+        cc_in_pkt = int.from_bytes(pkt[12:16], "little")
+        assert cc_in_pkt == 42  # last_cc + 1
+
+
+class TestAssembleFragments:
+    def test_single_simple_packet(self):
+        # SimplePacket — type=0, přímý payload
+        pkt = bytes([0x00, 0x05]) + b"hello"
+        result = assemble_fragments([pkt])
+        assert result == b"hello"
+
+    def test_fragmented_three_parts(self):
+        # FragmentedPacket — type=4 → (4<<4)|0 = 0x40
+        # Formát: [0x40][length][total][index][data...]
+        frag0 = bytes([0x40, 0x06, 0x03, 0x00]) + b"ab"
+        frag1 = bytes([0x40, 0x06, 0x03, 0x01]) + b"cd"
+        frag2 = bytes([0x40, 0x06, 0x03, 0x02]) + b"ef"
+        result = assemble_fragments([frag0, frag1, frag2])
+        assert result == b"abcdef"
+
+    def test_fragmented_out_of_order(self):
+        frag0 = bytes([0x40, 0x06, 0x03, 0x00]) + b"ab"
+        frag1 = bytes([0x40, 0x06, 0x03, 0x01]) + b"cd"
+        frag2 = bytes([0x40, 0x06, 0x03, 0x02]) + b"ef"
+        # Pošli v jiném pořadí
+        result = assemble_fragments([frag2, frag0, frag1])
+        assert result == b"abcdef"
+
+    def test_empty_list(self):
+        assert assemble_fragments([]) is None
+
+
+class TestDecryptSystemInfo:
+    def test_valid_decrypt(self):
+        sk = bytes.fromhex(TEST_SESSION_KEY)
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        result = decrypt_system_info(sk, sid, TEST_ASSEMBLED)
+        assert result is not None
+        assert result["serial"] == 28524
+        assert result["battery_raw"] == 2611
+        assert result["max_actions"] == 1
+        assert result["max_users"] == 6
+        assert result["version"] == 17
+        assert result["dst"] is True
+        assert result["name"] == "test"
+
+    def test_wrong_key_fails(self):
+        wrong_sk = bytes(16)
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        result = decrypt_system_info(wrong_sk, sid, TEST_ASSEMBLED)
+        assert result is None
+
+    def test_too_short(self):
+        sk = bytes.fromhex(TEST_SESSION_KEY)
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        assert decrypt_system_info(sk, sid, bytes(4)) is None
+
+    def test_production_date(self):
+        sk = bytes.fromhex(TEST_SESSION_KEY)
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        result = decrypt_system_info(sk, sid, TEST_ASSEMBLED)
+        assert result is not None
+        assert result["production"] == 1625135983
