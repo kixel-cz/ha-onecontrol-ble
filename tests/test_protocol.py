@@ -264,7 +264,7 @@ class TestAssembleFragments:
     def test_empty_list(self):
         assert assemble_fragments([]) is None
 
-    def test_assemble_fragments_skips_empty():
+    def test_assemble_fragments_skips_empty(self):
         frag0 = bytes([0x40, 0x06, 0x03, 0x00]) + b"ab"
         frag1 = bytes([0x40, 0x06, 0x03, 0x01]) + b"cd"
         frag2 = bytes([0x40, 0x06, 0x03, 0x02]) + b"ef"
@@ -304,7 +304,7 @@ class TestDecryptSystemInfo:
         assert result is not None
         assert result["production"] == 1625135983
 
-    def test_decrypt_system_info_bad_response_code():
+    def test_decrypt_system_info_bad_response_code(self):
         from Crypto.Cipher import AES
 
         sk = bytes.fromhex(TEST_SESSION_KEY)
