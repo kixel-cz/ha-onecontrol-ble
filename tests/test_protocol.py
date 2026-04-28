@@ -264,6 +264,13 @@ class TestAssembleFragments:
     def test_empty_list(self):
         assert assemble_fragments([]) is None
 
+    def test_assemble_fragments_skips_empty():
+        frag0 = bytes([0x40, 0x06, 0x03, 0x00]) + b"ab"
+        frag1 = bytes([0x40, 0x06, 0x03, 0x01]) + b"cd"
+        frag2 = bytes([0x40, 0x06, 0x03, 0x02]) + b"ef"
+        result = assemble_fragments([frag0, b"", frag1, frag2])
+        assert result == b"abcdef"
+
 
 class TestDecryptSystemInfo:
     def test_valid_decrypt(self):
@@ -296,3 +303,18 @@ class TestDecryptSystemInfo:
         result = decrypt_system_info(sk, sid, TEST_ASSEMBLED)
         assert result is not None
         assert result["production"] == 1625135983
+
+    def test_decrypt_system_info_bad_response_code():
+        from Crypto.Cipher import AES
+
+        sk = bytes.fromhex(TEST_SESSION_KEY)
+        sid = bytes.fromhex(TEST_SESSION_ID)
+        pt = bytes([0x01]) + bytes(17)
+        resp_cc = 99
+        nonce = bytes.fromhex(TEST_SESSION_ID)[:8] + struct.pack("<I", resp_cc)
+        aad = struct.pack("<H", 0) + struct.pack("<I", resp_cc) + b"\x14"
+        c = AES.new(sk, AES.MODE_CCM, nonce=nonce, mac_len=6)
+        c.update(aad)
+        ct, tag = c.encrypt_and_digest(pt)
+        assembled = bytes([0x14]) + ct + tag + bytes([0, 0]) + struct.pack("<I", resp_cc)
+        assert decrypt_system_info(sk, sid, assembled) is None
