@@ -26,6 +26,7 @@ filterwarnings = [
     "ignore::DeprecationWarning:josepy",
     "ignore::DeprecationWarning:acme",
     "ignore::DeprecationWarning:aiohttp",
+    "ignore::DeprecationWarning:homeassistant",
 ]
 
 [[tool.mypy.overrides]]
