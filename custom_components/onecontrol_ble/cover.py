@@ -49,7 +49,7 @@ class SoloMiniCover(CoverEntity):
             connections={(dr.CONNECTION_BLUETOOTH, entry.data["address"])},
             name=entry.data.get("name", "SoloMini"),
             manufacturer="1Control",
-            model="SoloMini RE",
+            model="SoloMini",
         )
 
     async def async_open_cover(self, **kwargs: Any) -> None:

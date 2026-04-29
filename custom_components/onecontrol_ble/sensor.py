@@ -136,7 +136,7 @@ def _device_info(entry: ConfigEntry, data: dict[str, Any]) -> dr.DeviceInfo:
         identifiers={(DOMAIN, entry.data["address"])},
         name=entry.data.get("name", "SoloMini"),
         manufacturer="1Control",
-        model="SoloMini RE",
+        model="SoloMini",
         sw_version=f"1.{version}" if version else None,
         hw_version=(
             datetime.fromtimestamp(production, tz=UTC).strftime("%Y-%m-%d") if production else None
