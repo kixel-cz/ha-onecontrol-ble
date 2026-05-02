@@ -380,13 +380,13 @@ class SoloMiniClient:
             _LOGGER.error("_do_transmit failed: %s", e)
             return None
 
-    async def pair(self) -> "SecurityData | None":
+    async def pair(self) -> SecurityData | None:
         import hashlib
 
         from cryptography.hazmat.primitives.asymmetric.ec import (
             ECDH,
-            EllipticCurvePublicNumbers,
             SECP256R1,
+            EllipticCurvePublicNumbers,
             generate_private_key,
         )
         from cryptography.hazmat.primitives.serialization import (
@@ -397,16 +397,12 @@ class SoloMiniClient:
         try:
             private_key = generate_private_key(SECP256R1())
             public_key = private_key.public_key()
-            pub_bytes = public_key.public_bytes(
-                Encoding.X962, PublicFormat.UncompressedPoint
-            )[1:]
+            pub_bytes = public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)[1:]
 
             q: asyncio.Queue[bytes] = asyncio.Queue()
             client = await self._get_client()
             async with client:
-                await client.start_notify(
-                    RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d))
-                )
+                await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.2)
 
                 pkt = bytes([0x00, 0x42, 0x90, 0x01]) + pub_bytes
