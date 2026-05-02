@@ -131,7 +131,7 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                         session_id=bytes(8),
                     )
                     client = SoloMiniClient(address=address, security=dummy_sec)
-                    result = await client.pair()
+                    result = await client.pair()  # type: ignore[attr-defined]
                     if result is None:
                         errors["base"] = "pairing_failed"
                     else:
