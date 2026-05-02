@@ -4,11 +4,14 @@
 [![License: MIT][license-badge]][license-url]
 [![HA Version][ha-badge]][ha-url]
 
-Local Home Assistant integration for **1Control SoloMini** via Bluetooth. No cloud dependency during operation — everything works directly over BLE.
+Local Home Assistant integration for **1Control SoloMini** garage door openers via Bluetooth. No cloud dependency during operation — everything works directly over BLE.
 
 ## Features
 
 - ✅ Open garage door / gate with one tap
+- ✅ Battery level sensor with device info
+- ✅ Learn new remotes directly from HA
+- ✅ Clone existing remotes (rolling code)
 - ✅ Fully local operation — no cloud, no internet required after setup
 - ✅ Works with any HA Bluetooth adapter (built-in or USB dongle)
 - ✅ HACS installation
@@ -17,7 +20,12 @@ Local Home Assistant integration for **1Control SoloMini** via Bluetooth. No clo
 
 ## Prerequisites
 
-To set up the integration, you need to extract security keys from the 1Control cloud **once** during initial configuration. This requires capturing a mitmproxy log while the 1Control app opens your gate. The keys are permanent and do not change — you will not need to repeat this process.
+To set up the integration you need to obtain security keys from the 1Control cloud **once**. The keys are permanent and do not change.
+
+**Two methods are available:**
+
+1. **mitmproxy** — capture the 1Control app communication (works with existing paired device)
+2. **ECDH pairing** — pair directly from HA (requires device in factory reset state)
 
 ---
 
@@ -35,33 +43,30 @@ Or manually:
 
 ---
 
-## Getting security keys (one-time setup)
+## Getting security keys
 
-The integration requires three keys extracted from the 1Control cloud: **LTK**, **Session Key**, and **Session ID**. These are permanent and tied to your device pairing.
+### Method 1: mitmproxy (existing device)
 
-### Method: mitmproxy
-
-1. Install [mitmproxy](https://mitmproxy.org/) on your computer - see [installation documentation](https://docs.mitmproxy.org/stable/overview/installation/)
-2. Configure your phone to use your computer as an HTTP/HTTPS proxy (Settings -> Wi-Fi -> current network -> HTTP proxy: manual ...). Turn the WiFi off and on again to make sure new settings were applied (turn off any VPN if enabled).
-3. Install the mitmproxy CA certificate on your phone - [instructions](https://docs.mitmproxy.org/stable/concepts/certificates/)
+1. Install [mitmproxy](https://mitmproxy.org/) on your computer
+2. Configure your phone to use your computer as an HTTP/HTTPS proxy
+3. Install the mitmproxy CA certificate on your phone
 4. Start `mitmdump -w onecontrol.log` on your computer
 5. Open the 1Control app and trigger a gate open
-6. Stop mitmproxy — the log file `onecontrol.log` now contains the keys
+6. Stop mitmproxy
 
 You can then either:
-- **Paste the log directly** into the integration setup (it will extract the keys automatically), or
-- **Use the extraction script** from the `tools/` folder:
+- **Paste the log directly** into the integration setup (keys extracted automatically), or
+- **Use the extraction script**:
 
 ```bash
 python3 tools/parse_mitm_log.py onecontrol.log
 ```
 
-Output:
-```
-LTK:         xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-Session Key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-Session ID:  xxxxxxxxxxxxxxxx
-```
+### Method 2: ECDH pairing (factory reset device)
+
+If your device is in factory reset state (no existing pairing), the integration can pair directly without the 1Control app. Select **"Pair device"** during setup — the integration will perform ECDH key exchange over BLE and derive the LTK automatically.
+
+Note: after pairing you still need to obtain the **Session Key** and **Session ID** via mitmproxy, as these come from the 1Control cloud.
 
 ---
 
@@ -69,17 +74,51 @@ Session ID:  xxxxxxxxxxxxxxxx
 
 1. **Settings → Devices & Services → Add Integration**
 2. Search for **1Control SoloMini BLE**
-3. **Step 1 — mitmproxy log** (optional): paste the log contents for automatic key extraction, or leave empty to enter keys manually
-4. **Step 2 — Device data**: enter the BLE address and security keys
-5. Click **Submit**
-
-A **Cover** entity is created which you can add to your dashboard or use in automations.
+3. **Step 1** — Select key entry method: mitmproxy log or pairing
+4. **Step 2** — Paste mitmproxy log (optional, for automatic key extraction)
+5. **Step 3** — Enter BLE address and security keys
+6. Click **Submit**
 
 ### Where do I find the BLE address?
 
-- In the 1Control app: device detail → info
-- On the label on the SoloMini device itself
 - In HA: **Settings → System → Bluetooth** → list of visible devices
+- Using a BLE scanner app (e.g. nRF Connect) — search for service UUID `D973F2E0-B19E-11E2-9E96-0800200C9A66`
+
+---
+
+## Entities
+
+| Entity | Type | Description |
+|--------|------|-------------|
+| Gate | Cover | Open the gate |
+| Battery | Sensor | Battery level (%) |
+| Device Name | Sensor | Name configured in the 1Control app |
+| Firmware Version | Sensor | Device firmware version |
+| Production Date | Sensor | Manufacturing date |
+| Serial Number | Sensor | Device serial number |
+| Max Actions | Sensor | Number of configured actions |
+| Max Users | Sensor | Maximum number of users |
+| Clone remote | Button | Clone rolling code remote |
+| 1. Start learning | Button | Begin learning a new remote |
+| 2. Test remote | Button | Send test signal to verify |
+| 3. Save remote | Button | Save the learned remote |
+| Cancel learning | Button | Cancel without saving |
+| Opening time | Number | Gate opening duration (seconds) |
+
+---
+
+## Learning a new remote
+
+To teach the SoloMini a new physical remote:
+
+1. Press **"1. Start learning"** in HA
+2. Press the button on your physical remote
+3. Press **"2. Test remote"** — the gate should activate
+4. Verify physically that the gate responded
+5. Press **"3. Save remote"** to store the remote
+6. Or press **"Cancel learning"** to abort without saving
+
+To clone a rolling code remote, press **"Clone remote"** and then press the button on your physical remote.
 
 ---
 
@@ -96,7 +135,7 @@ automation:
     action:
       - service: cover.open_cover
         target:
-          entity_id: cover.solomini_gate
+          entity_id: cover.solumini_gate
 ```
 
 ---
@@ -108,6 +147,8 @@ automation:
 | Device not visible in HA | Check HA Bluetooth adapter, restart integration |
 | Gate doesn't open | Verify the security keys — they must match the paired device |
 | Integration disconnects | Normal — SoloMini is wake-on-demand over BLE |
+| Wrong action number | Try action number 1 instead of 0 in integration settings |
+| Battery shows unknown | Trigger a gate open first — battery is read from the device greeting |
 
 ---
 
@@ -139,27 +180,43 @@ Reverse-engineered from `it.onecontrol.apk` v2.6.4 and iOS btsnoop captures.
    device → HA:  [00][0E][01][...][uid_2B][current_CC_4B]
 
 3. OPEN (using server session key + current CC):
-   server_sessionKey = SHA256(LTK || server_sessionID)[0:16]
-   nonce   = server_sessionID || (current_CC+1) as uint32 LE   (12 B)
-   aad     = [userID 2B] || [(CC+1) uint32 LE] || [0x01]       (7 B)
+   nonce   = server_sessionID || (CC+1) as uint32 LE   (12 B)
+   aad     = [userID 2B] || [(CC+1) uint32 LE] || [0x01] (7 B)
    CCM_out = AES-CCM-128(server_sessionKey, nonce, aad,
-               plaintext=[0x01, action], mac_len=6)             (8 B)
+               plaintext=[0x01, action], mac_len=6)
    packet: [00][0F][01][CCM_out_8B][userID_2B][CC+1_4B]
+
+4. TRANSMIT commands (same format, different plaintext[0]):
+   Open:           [0x01, action]
+   CloneRemote:    [0x02, action]
+   StartScanner:   [0x0C, action]
+   ConfirmScanner: [0x0D, action]
+   CompleteScanner:[0x0E, action]
+   UndoScanner:    [0x0F, action]
+
+5. GET SYSTEM INFO (cmd=0x14):
+   Request:  [0x14][AES-CCM([0xFF])][uid_2B][CC_4B]
+   Response: fragmented packets (type 4), assembled and decrypted
+   Contains: serial, battery_raw, firmware version, device name, etc.
+
+6. PAIRING (factory reset device):
+   HA → device:  [00][42][90][01][phone_pubkey_64B]
+   device → HA:  [00][42][90][00][device_pubkey_64B]
+   LTK = SHA256(ECDH(phone_privkey, device_pubkey))[0:16]
+   curve: secp256r1
 ```
-
-### Key insight
-
-The device stores a permanent **Session ID** from the initial cloud pairing. It only accepts open commands encrypted with `SHA256(LTK || stored_sessionID)`. This key is available from the 1Control cloud API (`/security/{serial}`) and does not change.
 
 ### Key APK source files
 
 | File | Description |
 |---|---|
 | `w2.java` | StartSession — session key derivation |
-| `d9/e.java` | AES-CCM packet builder (`e.h()`) |
-| `StartSessionRequest.java` | Session packet format |
-| `OpenAccessRequest.java` | Open command format |
-| `ControlSecurityRequest.java` | Base class for all encrypted commands |
+| `x2.java` | ECDH pairing |
+| `d9/e.java` | AES-CCM packet builder |
+| `d9/j.java` | SHA256 KDF, ECDH helpers |
+| `request/solo/TransmitRequest.java` | Open/Clone/Scanner commands |
+| `request/solo/GetSystemInfoRequest.java` | System info including battery |
+| `request/StartPairingRequest.java` | Pairing packet format |
 
 </details>
 
@@ -173,5 +230,5 @@ MIT — see [LICENSE](LICENSE)
 [hacs-url]: https://hacs.xyz
 [license-badge]: https://img.shields.io/badge/License-MIT-blue.svg
 [license-url]: LICENSE
-[ha-badge]: https://img.shields.io/badge/HA-2024.4%2B-green.svg
+[ha-badge]: https://img.shields.io/badge/HA-2023.12%2B-green.svg
 [ha-url]: https://www.home-assistant.io

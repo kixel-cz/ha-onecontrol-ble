@@ -1,4 +1,4 @@
-"""Button entities for 1Control SoloMini BLE."""
+"""Button entity pro 1Control SoloMini BLE."""
 
 from __future__ import annotations
 
@@ -20,8 +20,32 @@ DOMAIN = "onecontrol_ble"
 BUTTON_DESCRIPTIONS: tuple[ButtonEntityDescription, ...] = (
     ButtonEntityDescription(
         key="clone_remote",
-        name="Learn remote",
+        name="Clone remote",
         icon="mdi:remote",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    ButtonEntityDescription(
+        key="start_scanner",
+        name="1. Start learning",
+        icon="mdi:antenna",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    ButtonEntityDescription(
+        key="confirm_scanner",
+        name="2. Test remote",
+        icon="mdi:remote-tv",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    ButtonEntityDescription(
+        key="complete_scanner",
+        name="3. Save remote",
+        icon="mdi:content-save",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    ButtonEntityDescription(
+        key="undo_scanner",
+        name="Cancel learning",
+        icon="mdi:cancel",
         entity_category=EntityCategory.CONFIG,
     ),
 )
@@ -58,11 +82,28 @@ class SoloMiniButton(ButtonEntity):
         )
 
     async def async_press(self, **kwargs: Any) -> None:
-        if self.entity_description.key == "clone_remote":
-            action = self._entry.data.get("action", 0)
-            _LOGGER.info("Starting remote clone for action=%d", action)
+        action = self._entry.data.get("action", 0)
+        key = self.entity_description.key
+
+        if key == "clone_remote":
             result = await self._client.clone_remote(action)
             if result is not None:
                 _LOGGER.info("Remote cloned, slot=%d", result)
             else:
                 _LOGGER.error("Remote clone failed")
+
+        elif key == "start_scanner":
+            ok = await self._client.start_scanner(action)  # type: ignore[attr-defined]
+            _LOGGER.info("Start scanner: %s", "OK" if ok else "FAILED")
+
+        elif key == "confirm_scanner":
+            ok = await self._client.confirm_scanner(action)  # type: ignore[attr-defined]
+            _LOGGER.info("Confirm scanner: %s", "OK" if ok else "FAILED")
+
+        elif key == "complete_scanner":
+            ok = await self._client.complete_scanner(action)  # type: ignore[attr-defined]
+            _LOGGER.info("Complete scanner: %s", "OK" if ok else "FAILED")
+
+        elif key == "undo_scanner":
+            ok = await self._client.undo_scanner(action)  # type: ignore[attr-defined]
+            _LOGGER.info("Undo scanner: %s", "OK" if ok else "FAILED")

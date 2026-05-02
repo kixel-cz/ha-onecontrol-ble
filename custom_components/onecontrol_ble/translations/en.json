@@ -75,7 +75,19 @@
   "entity": {
     "button": {
       "clone_remote": {
-        "name": "Learn remote"
+        "name": "Clone remote"
+      },
+      "start_scanner": {
+        "name": "1. Start learning"
+      },
+      "confirm_scanner": {
+        "name": "2. Test remote"
+      },
+      "complete_scanner": {
+        "name": "3. Save remote"
+      },
+      "undo_scanner": {
+        "name": "Cancel learning"
       }
     },
     "number": {

@@ -231,3 +231,128 @@ class TestSetOpeningTime:
             result = await client.set_opening_time(action=0, time_s=30)
 
         assert result is None
+
+
+class TestScannerFlow:
+    @pytest.mark.asyncio
+    async def test_start_scanner_success(self, security):
+        """start_scanner vrátí True při úspěchu."""
+        random_b = bytes(range(8))
+        responses = [
+            make_session_response(random_b),
+            make_probe_response(cc=10),
+            make_transmit_response(0),
+        ]
+        fake_ble = FakeTransmitClient(responses)
+        client = make_client(security)
+
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient",
+            return_value=fake_ble,
+        ):
+            result = await client.start_scanner(action=0)  # type: ignore[attr-defined]
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_confirm_scanner_success(self, security):
+        """confirm_scanner vrátí True při úspěchu."""
+        random_b = bytes(range(8))
+        responses = [
+            make_session_response(random_b),
+            make_probe_response(cc=10),
+            make_transmit_response(0),
+        ]
+        fake_ble = FakeTransmitClient(responses)
+        client = make_client(security)
+
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient",
+            return_value=fake_ble,
+        ):
+            result = await client.confirm_scanner(action=0)  # type: ignore[attr-defined]
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_complete_scanner_success(self, security):
+        """complete_scanner vrátí True při úspěchu."""
+        random_b = bytes(range(8))
+        responses = [
+            make_session_response(random_b),
+            make_probe_response(cc=10),
+            make_transmit_response(0),
+        ]
+        fake_ble = FakeTransmitClient(responses)
+        client = make_client(security)
+
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient",
+            return_value=fake_ble,
+        ):
+            result = await client.complete_scanner(action=0)  # type: ignore[attr-defined]
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_undo_scanner_success(self, security):
+        """undo_scanner vrátí True při úspěchu."""
+        random_b = bytes(range(8))
+        responses = [
+            make_session_response(random_b),
+            make_probe_response(cc=10),
+            make_transmit_response(0),
+        ]
+        fake_ble = FakeTransmitClient(responses)
+        client = make_client(security)
+
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient",
+            return_value=fake_ble,
+        ):
+            result = await client.undo_scanner(action=0)  # type: ignore[attr-defined]
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_start_scanner_nack_returns_false(self, security):
+        """NACK na probe vrátí False."""
+        random_b = bytes(range(8))
+        responses = [
+            make_session_response(random_b),
+            NACK,
+        ]
+        fake_ble = FakeTransmitClient(responses)
+        client = make_client(security)
+
+        with patch(
+            "custom_components.onecontrol_ble.ble_client.BleakClient",
+            return_value=fake_ble,
+        ):
+            result = await client.start_scanner(action=0)  # type: ignore[attr-defined]
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_full_scanner_flow(self, security):
+        """Kompletní flow: start → confirm → complete."""
+        random_b = bytes(range(8))
+
+        async def run_step(plaintext_byte: int) -> bool:
+            responses = [
+                make_session_response(random_b),
+                make_probe_response(cc=10),
+                make_transmit_response(0),
+            ]
+            fake_ble = FakeTransmitClient(responses)
+            client = make_client(security)
+            with patch(
+                "custom_components.onecontrol_ble.ble_client.BleakClient",
+                return_value=fake_ble,
+            ):
+                result = await client._do_transmit(bytes([plaintext_byte, 0]))
+            return result is not None
+
+        assert await run_step(0x0C)  # StartScanner
+        assert await run_step(0x0D)  # ConfirmScanner
+        assert await run_step(0x0E)  # CompleteScanner

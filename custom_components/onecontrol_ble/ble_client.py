@@ -434,3 +434,23 @@ class SoloMiniClient:
         except Exception as e:
             _LOGGER.error("Pairing failed: %s", e)
             return None
+
+    async def start_scanner(self, action: int = 0) -> bool:
+        """Zahaj skenování nového ovladače."""
+        result = await self._do_transmit(bytes([0x0C, action & 0xFF]))
+        return result is not None
+
+    async def confirm_scanner(self, action: int = 0) -> bool:
+        """Testovací aktivace — ověří že naskenovaný ovladač funguje."""
+        result = await self._do_transmit(bytes([0x0D, action & 0xFF]))
+        return result is not None
+
+    async def complete_scanner(self, action: int = 0) -> bool:
+        """Ulož naskenovaný ovladač."""
+        result = await self._do_transmit(bytes([0x0E, action & 0xFF]))
+        return result is not None
+
+    async def undo_scanner(self, action: int = 0) -> bool:
+        """Zruš skenování bez uložení."""
+        result = await self._do_transmit(bytes([0x0F, action & 0xFF]))
+        return result is not None

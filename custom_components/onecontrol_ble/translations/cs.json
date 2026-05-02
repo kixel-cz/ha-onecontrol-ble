@@ -75,7 +75,19 @@
   "entity": {
     "button": {
       "clone_remote": {
-        "name": "Naučit ovladač"
+        "name": "Klonovat ovladač"
+      },
+      "start_scanner": {
+        "name": "1. Zahájit učení"
+      },
+      "confirm_scanner": {
+        "name": "2. Otestovat ovladač"
+      },
+      "complete_scanner": {
+        "name": "3. Uložit ovladač"
+      },
+      "undo_scanner": {
+        "name": "Zrušit učení"
       }
     },
     "number": {
