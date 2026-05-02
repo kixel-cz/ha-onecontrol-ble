@@ -71,5 +71,17 @@
     "abort": {
       "already_configured": "Device is already configured."
     }
+  },
+  "entity": {
+    "button": {
+      "clone_remote": {
+        "name": "Learn remote"
+      }
+    },
+    "number": {
+      "opening_time": {
+        "name": "Opening time"
+      }
+    }
   }
 }

@@ -71,5 +71,17 @@
     "abort": {
       "already_configured": "Toto zařízení je již nakonfigurováno."
     }
+  },
+  "entity": {
+    "button": {
+      "clone_remote": {
+        "name": "Naučit ovladač"
+      }
+    },
+    "number": {
+      "opening_time": {
+        "name": "Doba otevření"
+      }
+    }
   }
 }

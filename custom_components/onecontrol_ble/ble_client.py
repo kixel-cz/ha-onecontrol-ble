@@ -1,4 +1,4 @@
-"""1Control SoloMini — BLE client."""
+"""1Control SoloMini RE — BLE client."""
 
 from __future__ import annotations
 
@@ -45,9 +45,11 @@ class SoloMiniClient:
         self._lock = asyncio.Lock()
 
     def set_ble_device(self, ble_device: BLEDevice) -> None:
+        """Aktualizuj BLEDevice objekt z HA bluetooth stacku."""
         self.ble_device = ble_device
 
     async def _get_client(self) -> BleakClient:
+        """Vytvoř BleakClient — přes HA BT stack pokud je BLEDevice dostupný."""
         if self.ble_device is not None:
             return await establish_connection(
                 BleakClientWithServiceCache,
@@ -55,6 +57,7 @@ class SoloMiniClient:
                 self.address,
                 max_attempts=3,
             )
+        # Fallback na přímé připojení
         return BleakClient(self.address, timeout=CONNECT_TIMEOUT)
 
     async def open_gate(self) -> bool:
@@ -83,6 +86,7 @@ class SoloMiniClient:
             while not q.empty():
                 q.get_nowait()
 
+            # 1. StartSession
             await client.write_gatt_char(
                 TX_CHAR_UUID,
                 bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
@@ -92,6 +96,7 @@ class SoloMiniClient:
             _LOGGER.debug("Session: %s", resp.hex())
             our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
+            # 2. Zkus přímo s uloženým last_cc (CC optimalizace)
             current_cc = self.security.last_cc
             _LOGGER.debug("Trying with last_cc=%d", current_cc)
 
@@ -162,6 +167,7 @@ class SoloMiniClient:
         last_cc: int,
         first: bytes | None = None,
     ) -> int:
+        """Zpracuj odpovědi po open příkazu, extrahuj baterii z greetingu."""
         new_cc = last_cc + 1
         packets: list[bytes] = [first] if first is not None else []
 
@@ -196,6 +202,7 @@ class SoloMiniClient:
         return new_cc
 
     async def get_system_info(self) -> dict[str, Any]:
+        """Přečti systémové info zařízení včetně baterie."""
         for attempt in range(3):
             if self._lock.locked():
                 _LOGGER.debug("Lock busy, waiting... attempt %d", attempt + 1)
@@ -255,7 +262,7 @@ class SoloMiniClient:
             )
             await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
 
-            # Get fragments
+            # Sbírej fragmenty
             frags: list[bytes] = []
             for _ in range(5):
                 try:
@@ -285,57 +292,104 @@ class SoloMiniClient:
                 return info
             return {}
 
-    async def pair(self) -> SecurityData | None:
-        import hashlib
+    async def clone_remote(self, action: int = 0) -> int | None:
+        """Naučí nový plovoucí kód z fyzického ovladače.
 
-        from cryptography.hazmat.primitives.asymmetric.ec import (
-            ECDH,
-            SECP256R1,
-            EllipticCurvePublicNumbers,
-            generate_private_key,
-        )
-        from cryptography.hazmat.primitives.serialization import (
-            Encoding,
-            PublicFormat,
+        Vrátí index slotu kde byl kód uložen, nebo None při chybě.
+        Uživatel musí stisknout fyzický ovladač během volání.
+        """
+        return await self._do_transmit(bytes([0x02, action & 0xFF]))
+
+    async def set_opening_time(self, action: int = 0, time_s: int = 0) -> int | None:
+        """Nastaví dobu otevření brány v sekundách (0 = výchozí).
+
+        Vrátí potvrzovací hodnotu nebo None při chybě.
+        """
+        return await self._do_transmit(
+            bytes([0x07, action & 0xFF, time_s & 0xFF, (time_s >> 8) & 0xFF])
         )
 
+    async def _do_transmit(self, plaintext: bytes) -> int | None:
+        """Obecný TransmitRequest — pošle plaintext a vrátí response hodnotu."""
         try:
-            private_key = generate_private_key(SECP256R1())
-            public_key = private_key.public_key()
-            pub_bytes = public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)[1:]
-
+            random_a = os.urandom(8)
             q: asyncio.Queue[bytes] = asyncio.Queue()
+
             client = await self._get_client()
             async with client:
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.3)
+                while not q.empty():
+                    q.get_nowait()
 
-                pkt = bytes([0x00, 0x42, 0x90, 0x01]) + pub_bytes
-                _LOGGER.debug("TX StartPairing (%dB): %s", len(pkt), pkt.hex())
-                await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
+                # StartSession
+                await client.write_gatt_char(
+                    TX_CHAR_UUID,
+                    bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
+                    response=True,
+                )
+                resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+                our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
-                resp = await asyncio.wait_for(q.get(), timeout=10.0)
-                _LOGGER.debug("RX StartPairing (%dB): %s", len(resp), resp.hex())
-
-                if len(resp) < 66 or resp[2] != 0x90:
-                    _LOGGER.error("Unexpected pairing response: %s", resp.hex())
+                # Probe
+                probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
+                await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
+                r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+                if is_nack(r):
+                    return None
+                resp_cc = extract_response_cc(r)
+                if resp_cc is None:
                     return None
 
-                device_pub_bytes = resp[4:68]
-                x = int.from_bytes(device_pub_bytes[:32], "big")
-                y = int.from_bytes(device_pub_bytes[32:], "big")
-                device_pub = EllipticCurvePublicNumbers(x, y, SECP256R1()).public_key()
-
-                shared = private_key.exchange(ECDH(), device_pub)
-                ltk = hashlib.sha256(shared).digest()[:16]
-                _LOGGER.info("Pairing complete, LTK=%s", ltk.hex())
-
-                return SecurityData(
-                    ltk=ltk,
-                    session_key=bytes(16),
-                    session_id=bytes(8),
-                    user_id=0,
+                # Příkaz se serverovým SK+SID
+                pkt = build_open_command(
+                    self.security.session_key,
+                    self.security.session_id,
+                    resp_cc,
+                    self.security.user_id,
+                    action=0,  # unused — plaintext se předává níže
                 )
+                # Přepiš plaintext v paketu
+                import struct as _struct
+
+                from .protocol import CCM_TAG_LEN, build_tlv
+
+                cc = resp_cc + 1
+                nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
+                aad = _struct.pack("<H", self.security.user_id) + _struct.pack("<I", cc) + b"\x01"
+                from Crypto.Cipher import AES as _AES
+
+                cipher = _AES.new(
+                    self.security.session_key,
+                    _AES.MODE_CCM,
+                    nonce=nonce,
+                    mac_len=CCM_TAG_LEN,
+                )
+                cipher.update(aad)
+                ct, tag = cipher.encrypt_and_digest(plaintext)
+                payload = (
+                    b"\x01"
+                    + ct
+                    + tag
+                    + _struct.pack("<H", self.security.user_id)
+                    + _struct.pack("<I", cc)
+                )
+                pkt = build_tlv(payload)
+
+                await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
+
+                # Čekej na response (clone_remote může trvat déle)
+                ack = await asyncio.wait_for(q.get(), timeout=15.0)
+                _LOGGER.debug("_do_transmit RX: %s", ack.hex())
+
+                if is_nack(ack):
+                    return None
+
+                # Vrať první byte payloadu jako výsledek
+                if len(ack) >= 8:
+                    return ack[3] & 0xFF
+                return 0
+
         except Exception as e:
-            _LOGGER.error("Pairing failed: %s", e)
+            _LOGGER.error("_do_transmit failed: %s", e)
             return None

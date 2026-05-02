@@ -20,7 +20,7 @@ from .protocol import SecurityData
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
-PLATFORMS = ["cover", "sensor"]
+PLATFORMS = ["button", "cover", "number", "sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -35,7 +35,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     address = entry.data["address"]
-
     ble_device = async_ble_device_from_address(hass, address, connectable=True)
 
     client = SoloMiniClient(
