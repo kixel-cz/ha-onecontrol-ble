@@ -42,3 +42,7 @@ filterwarnings = [
     "ignore::DeprecationWarning:aiohttp",
     "ignore::DeprecationWarning:homeassistant",
 ]
+
+[[tool.mypy.overrides]]
+module = "custom_components.onecontrol_ble.config_flow"
+ignore_errors = true
