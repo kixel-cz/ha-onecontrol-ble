@@ -1,5 +1,7 @@
 """1Control SoloMini RE — BLE client."""
+
 from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -13,18 +15,18 @@ from bleak_retry_connector import (
 )
 
 from .protocol import (
-    SecurityData,
-    TX_CHAR_UUID,
     RX_CHAR_UUID,
-    derive_session,
+    TX_CHAR_UUID,
+    SecurityData,
     build_open_command,
-    is_nack,
+    derive_session,
     extract_response_cc,
+    is_nack,
     parse_greeting,
 )
 
 _LOGGER = logging.getLogger(__name__)
-CONNECT_TIMEOUT  = 20.0
+CONNECT_TIMEOUT = 20.0
 RESPONSE_TIMEOUT = 8.0
 
 
@@ -36,11 +38,11 @@ class SoloMiniClient:
         action: int = 0,
         ble_device: BLEDevice | None = None,
     ):
-        self.address    = address
-        self.security   = security
-        self.action     = action
+        self.address = address
+        self.security = security
+        self.action = action
         self.ble_device = ble_device
-        self._lock      = asyncio.Lock()
+        self._lock = asyncio.Lock()
 
     def set_ble_device(self, ble_device: BLEDevice) -> None:
         self.ble_device = ble_device
@@ -77,8 +79,7 @@ class SoloMiniClient:
         client = await self._get_client()
         async with client:
             _LOGGER.debug("Connected to %s", self.address)
-            await client.start_notify(RX_CHAR_UUID,
-                lambda _, d: q.put_nowait(bytes(d)))
+            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
                 q.get_nowait()
@@ -91,8 +92,7 @@ class SoloMiniClient:
             )
             resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
             _LOGGER.debug("Session: %s", resp.hex())
-            our_sid, our_sk = derive_session(
-                self.security.ltk, random_a, resp[4:12])
+            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
             # 2. Zkus přímo s uloženým last_cc (CC optimalizace)
             current_cc = self.security.last_cc
@@ -113,8 +113,7 @@ class SoloMiniClient:
 
                 if is_nack(r):
                     _LOGGER.debug("NACK on last_cc=%d, probing...", current_cc)
-                    probe = build_open_command(
-                        our_sk, our_sid, 0, self.security.user_id)
+                    probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
                     await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
                     r2 = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
                     resp_cc = extract_response_cc(r2)
@@ -216,17 +215,17 @@ class SoloMiniClient:
 
     async def _do_get_system_info(self) -> dict[str, Any]:
         from .protocol import (
-            build_get_system_info,
             assemble_fragments,
+            build_get_system_info,
             decrypt_system_info,
         )
+
         random_a = os.urandom(8)
         q: asyncio.Queue[bytes] = asyncio.Queue()
 
         client = await self._get_client()
         async with client:
-            await client.start_notify(RX_CHAR_UUID,
-                lambda _, d: q.put_nowait(bytes(d)))
+            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
                 q.get_nowait()
@@ -238,8 +237,7 @@ class SoloMiniClient:
                 response=True,
             )
             resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-            our_sid, our_sk = derive_session(
-                self.security.ltk, random_a, resp[4:12])
+            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
             # Probe
             probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
@@ -305,9 +303,7 @@ class SoloMiniClient:
 
             client = await self._get_client()
             async with client:
-                await client.start_notify(
-                    RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d))
-                )
+                await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
                     q.get_nowait()
@@ -319,9 +315,7 @@ class SoloMiniClient:
                     response=True,
                 )
                 resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                our_sid, our_sk = derive_session(
-                    self.security.ltk, random_a, resp[4:12]
-                )
+                our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
                 # Probe
                 probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
@@ -342,16 +336,15 @@ class SoloMiniClient:
                     action=0,  # unused — plaintext se předává níže
                 )
                 # Přepiš plaintext v paketu
-                from .protocol import build_tlv, CCM_TAG_LEN
                 import struct as _struct
+
+                from .protocol import CCM_TAG_LEN, build_tlv
+
                 cc = resp_cc + 1
                 nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
-                aad = (
-                    _struct.pack("<H", self.security.user_id)
-                    + _struct.pack("<I", cc)
-                    + b"\x01"
-                )
+                aad = _struct.pack("<H", self.security.user_id) + _struct.pack("<I", cc) + b"\x01"
                 from Crypto.Cipher import AES as _AES
+
                 cipher = _AES.new(
                     self.security.session_key,
                     _AES.MODE_CCM,
