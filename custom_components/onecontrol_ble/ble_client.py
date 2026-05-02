@@ -284,3 +284,57 @@ class SoloMiniClient:
                 _LOGGER.debug("SystemInfo: %s", info)
                 return info
             return {}
+
+    async def pair(self) -> SecurityData | None:
+        import hashlib
+
+        from cryptography.hazmat.primitives.asymmetric.ec import (
+            ECDH,
+            SECP256R1,
+            EllipticCurvePublicNumbers,
+            generate_private_key,
+        )
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding,
+            PublicFormat,
+        )
+
+        private_key = generate_private_key(SECP256R1())
+        public_key = private_key.public_key()
+        # Raw 64B X||Y w/o 0x04 prefix
+        pub_bytes = public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)[1:]
+
+        q: asyncio.Queue[bytes] = asyncio.Queue()
+        client = await self._get_client()
+        async with client:
+            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
+            await asyncio.sleep(0.2)
+
+            # StartPairing: [00][42][90][01][pubkey_64B]
+            pkt = bytes([0x00, 0x42, 0x90, 0x01]) + pub_bytes
+            _LOGGER.debug("TX StartPairing (%dB): %s", len(pkt), pkt.hex())
+            await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
+
+            resp = await asyncio.wait_for(q.get(), timeout=10.0)
+            _LOGGER.debug("RX StartPairing (%dB): %s", len(resp), resp.hex())
+
+            # Response: [type][len][0x90][0x00][device_pubkey_64B]
+            if len(resp) < 66 or resp[2] != 0x90:
+                _LOGGER.error("Unexpected pairing response: %s", resp.hex())
+                return None
+
+            device_pub_bytes = resp[4:68]  # 64B X||Y
+            x = int.from_bytes(device_pub_bytes[:32], "big")
+            y = int.from_bytes(device_pub_bytes[32:], "big")
+            device_pub = EllipticCurvePublicNumbers(x, y, SECP256R1()).public_key()
+
+            shared = private_key.exchange(ECDH(), device_pub)
+            ltk = hashlib.sha256(shared).digest()[:16]
+            _LOGGER.info("Pairing complete, LTK=%s", ltk.hex())
+
+            return SecurityData(
+                ltk=ltk,
+                session_key=bytes(16),
+                session_id=bytes(8),
+                user_id=0,
+            )

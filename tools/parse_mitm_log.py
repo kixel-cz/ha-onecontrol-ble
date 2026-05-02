@@ -2,7 +2,9 @@
 """
 Extract 1Control security keys from a mitmproxy log file.
 """
-import re, json, sys
+import json
+import re
+import sys
 
 if len(sys.argv) < 2:
     print(f"Usage: {sys.argv[0]} <mitmproxy_log_file>", file=sys.stderr)

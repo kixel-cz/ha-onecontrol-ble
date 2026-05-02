@@ -13,21 +13,11 @@ known-first-party = ["custom_components"]
 python_version = "3.12"
 ignore_missing_imports = true
 strict = false
+mypy_path = ["."]
 
 [[tool.mypy.overrides]]
 module = "custom_components.onecontrol_ble.config_flow"
 ignore_errors = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-pythonpath = ["."]
-filterwarnings = [
-    "ignore::DeprecationWarning:josepy",
-    "ignore::DeprecationWarning:acme",
-    "ignore::DeprecationWarning:aiohttp",
-    "ignore::DeprecationWarning:homeassistant",
-]
 
 [[tool.mypy.overrides]]
 module = "custom_components.onecontrol_ble.sensor"
@@ -41,3 +31,14 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = "custom_components.onecontrol_ble.protocol"
 ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning:josepy",
+    "ignore::DeprecationWarning:acme",
+    "ignore::DeprecationWarning:aiohttp",
+    "ignore::DeprecationWarning:homeassistant",
+]

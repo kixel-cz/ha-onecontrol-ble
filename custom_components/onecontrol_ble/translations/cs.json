@@ -38,13 +38,35 @@
         "data": {
           "address": "Zařízení"
         }
+      },
+      "keys": {
+        "title": "Způsob zadání klíčů",
+        "description": "Vyberte jak chcete zadat bezpečnostní klíče.",
+        "data": {
+          "method": "Metoda"
+        },
+        "data_description": {
+          "method": "Mitmproxy log: zachyťte komunikaci appky. Párování: pro zařízení ve factory reset stavu."
+        }
+      },
+      "pair": {
+        "title": "Párování zařízení",
+        "description": "Ujistěte se, že je zařízení ve stavu factory reset (nespárované). Zadejte BLE adresu a klikněte na Odeslat.",
+        "data": {
+          "address": "BLE adresa"
+        },
+        "data_description": {
+          "address": "MAC adresa zařízení, např. EF:73:A3:39:3B:E4"
+        }
       }
     },
     "error": {
       "invalid_hex": "Neplatný hex formát nebo špatná délka.",
       "parse_failed": "Nepodařilo se extrahovat data z logu. Zkontrolujte, zda log obsahuje volání security API.",
       "cannot_connect": "Nelze se připojit k zařízení. Zkontrolujte BLE adresu.",
-      "already_configured": "Toto zařízení je již nakonfigurováno."
+      "already_configured": "Toto zařízení je již nakonfigurováno.",
+      "pairing_failed": "Párování selhalo. Zkontrolujte, zda je zařízení ve factory reset stavu.",
+      "address_required": "BLE adresa je povinná."
     },
     "abort": {
       "already_configured": "Toto zařízení je již nakonfigurováno."
