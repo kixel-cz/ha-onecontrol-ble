@@ -338,3 +338,6 @@ class SoloMiniClient:
                 session_id=bytes(8),
                 user_id=0,
             )
+        except Exception as e:
+            _LOGGER.error("Pairing failed: %s", e)
+            return None

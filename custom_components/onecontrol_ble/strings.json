@@ -2,13 +2,6 @@
   "title": "1Control SoloMini BLE",
   "config": {
     "step": {
-      "pick_device": {
-        "title": "Select device",
-        "description": "The following SoloMini devices were found nearby.",
-        "data": {
-          "address": "Device"
-        }
-      },
       "mitm": {
         "title": "Security keys — mitmproxy log",
         "description": "Optionally paste the contents of a mitmproxy log to auto-fill security keys. Leave empty to enter keys manually in the next step.",
@@ -38,13 +31,42 @@
           "session_id": "Session ID from 1Control server (16 characters)",
           "action": "Action number for gate open (default 0)"
         }
+      },
+      "pick_device": {
+        "title": "Select device",
+        "description": "The following SoloMini devices were found nearby.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "keys": {
+        "title": "Key entry method",
+        "description": "Choose how you want to enter the security keys.",
+        "data": {
+          "method": "Method"
+        },
+        "data_description": {
+          "method": "Mitmproxy log: capture app communication. Pairing: for factory reset devices."
+        }
+      },
+      "pair": {
+        "title": "Pair device",
+        "description": "Make sure the device is in factory reset state (unpaired). Enter the BLE address and click Submit.",
+        "data": {
+          "address": "BLE address"
+        },
+        "data_description": {
+          "address": "Device MAC address, e.g. EF:73:A3:39:3B:E4"
+        }
       }
     },
     "error": {
       "invalid_hex": "Invalid hex format or wrong length.",
       "parse_failed": "Could not extract data from log. Make sure the log contains a security API call.",
       "cannot_connect": "Cannot connect to device. Check the BLE address.",
-      "already_configured": "Device is already configured."
+      "already_configured": "Device is already configured.",
+      "pairing_failed": "Pairing failed. Make sure the device is in factory reset state.",
+      "address_required": "BLE address is required."
     },
     "abort": {
       "already_configured": "Device is already configured."
