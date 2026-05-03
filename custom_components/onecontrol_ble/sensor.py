@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -26,8 +26,6 @@ from .ble_client import SoloMiniClient
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
-SCAN_INTERVAL = timedelta(hours=1)
-
 BATTERY_HIGH = 3200  # TODO
 BATTERY_LOW = 1800  # TODO
 
@@ -49,18 +47,18 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
-        key="device_name",
+        key="name",
         name="Device Name",
         icon="mdi:label",
     ),
     SensorEntityDescription(
-        key="firmware_version",
+        key="version",
         name="Firmware Version",
         icon="mdi:chip",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
-        key="production_date",
+        key="production",
         name="Production Date",
         icon="mdi:calendar",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -92,7 +90,7 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
-        key="dst_enabled",
+        key="dst",
         name="DST Enabled",
         icon="mdi:clock-time-eight",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -112,21 +110,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     client: SoloMiniClient = hass.data[DOMAIN][entry.entry_id]
-
-    coordinator: DataUpdateCoordinator[dict[str, Any]] = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=f"onecontrol_{entry.data['address']}",
-        update_method=client.get_system_info,
-        update_interval=SCAN_INTERVAL,
-    )
+    coordinator: DataUpdateCoordinator[dict[str, Any]] = hass.data[DOMAIN][
+        f"{entry.entry_id}_coordinator"
+    ]
 
     entities: list[SensorEntity] = [SoloMiniBatterySensor(coordinator, client, entry)]
     for description in SENSOR_DESCRIPTIONS:
         entities.append(SoloMiniInfoSensor(coordinator, entry, description))
 
     async_add_entities(entities)
-    hass.async_create_task(coordinator.async_request_refresh())
 
 
 def _device_info(entry: ConfigEntry, data: dict[str, Any]) -> dr.DeviceInfo:
@@ -136,12 +128,13 @@ def _device_info(entry: ConfigEntry, data: dict[str, Any]) -> dr.DeviceInfo:
         identifiers={(DOMAIN, entry.data["address"])},
         name=entry.data.get("name", "SoloMini"),
         manufacturer="1Control",
-        model="SoloMini RE",
+        model="SoloMini",
         sw_version=f"1.{version}" if version else None,
         hw_version=(
             datetime.fromtimestamp(production, tz=UTC).strftime("%Y-%m-%d") if production else None
         ),
         serial_number=str(data["serial"]) if data.get("serial") else None,
+        connections={(dr.CONNECTION_BLUETOOTH, entry.data["address"])},
     )
 
 
@@ -203,4 +196,9 @@ class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
     def native_value(self) -> Any:
         if not self.coordinator.data:
             return None
-        return self.coordinator.data.get(self.entity_description.key)
+        value = self.coordinator.data.get(self.entity_description.key)
+        if self.entity_description.key == "production" and value:
+            return datetime.fromtimestamp(value, tz=UTC).strftime("%Y-%m-%d")
+        if self.entity_description.key == "version" and value is not None:
+            return f"1.{value}"
+        return value

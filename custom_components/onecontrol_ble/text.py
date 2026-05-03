@@ -28,9 +28,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     client: SoloMiniClient = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DataUpdateCoordinator[dict[str, Any]] | None = hass.data[DOMAIN].get(
+    coordinator: DataUpdateCoordinator[dict[str, Any]] = hass.data[DOMAIN][
         f"{entry.entry_id}_coordinator"
-    )
+    ]
     async_add_entities([SoloMiniDeviceName(client, entry, coordinator)])
 
 
@@ -47,12 +47,9 @@ class SoloMiniDeviceName(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
         self,
         client: SoloMiniClient,
         entry: ConfigEntry,
-        coordinator: DataUpdateCoordinator[dict[str, Any]] | None,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
     ) -> None:
-        if coordinator is not None:
-            super().__init__(coordinator)
-        else:
-            TextEntity.__init__(self)  # type: ignore[misc]
+        super().__init__(coordinator)
         self._client = client
         self._entry = entry
         self._attr_unique_id = (
@@ -64,7 +61,7 @@ class SoloMiniDeviceName(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
 
     @property
     def native_value(self) -> str | None:
-        if hasattr(self, "coordinator") and self.coordinator.data:
+        if self.coordinator.data:
             name = self.coordinator.data.get("name", "")
             return name[:4] if name else None
         return None
@@ -76,7 +73,6 @@ class SoloMiniDeviceName(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
         ok = await self._client.set_device_name(value)  # type: ignore[attr-defined]
         if ok:
             _LOGGER.info("Device name set to '%s'", value)
-            if hasattr(self, "coordinator"):
-                await self.coordinator.async_request_refresh()
+            await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to set device name")

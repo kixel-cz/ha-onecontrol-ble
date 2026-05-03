@@ -28,9 +28,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     client: SoloMiniClient = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DataUpdateCoordinator[dict[str, Any]] | None = hass.data[DOMAIN].get(
+    coordinator: DataUpdateCoordinator[dict[str, Any]] = hass.data[DOMAIN][
         f"{entry.entry_id}_coordinator"
-    )
+    ]
     async_add_entities([SoloMiniDSTSwitch(client, entry, coordinator)])
 
 
@@ -59,7 +59,7 @@ class SoloMiniDSTSwitch(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
 
     @property
     def is_on(self) -> bool | None:
-        if hasattr(self, "coordinator") and self.coordinator.data:
+        if self.coordinator.data:
             return self.coordinator.data.get("dst")
         return None
 
@@ -67,8 +67,7 @@ class SoloMiniDSTSwitch(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
         ok = await self._client.set_dst(True)  # type: ignore[attr-defined]
         if ok:
             _LOGGER.info("DST enabled")
-            if hasattr(self, "coordinator"):
-                await self.coordinator.async_request_refresh()
+            await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to enable DST")
 
@@ -76,7 +75,6 @@ class SoloMiniDSTSwitch(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
         ok = await self._client.set_dst(False)  # type: ignore[attr-defined]
         if ok:
             _LOGGER.info("DST disabled")
-            if hasattr(self, "coordinator"):
-                await self.coordinator.async_request_refresh()
+            await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to disable DST")

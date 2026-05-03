@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from homeassistant.components.bluetooth import (
     BluetoothCallbackMatcher,
@@ -14,6 +15,7 @@ from homeassistant.components.bluetooth import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .ble_client import SoloMiniClient
 from .protocol import SecurityData
@@ -21,6 +23,7 @@ from .protocol import SecurityData
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
 PLATFORMS = ["button", "cover", "number", "sensor", "switch", "text"]
+SCAN_INTERVAL = timedelta(hours=1)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -43,8 +46,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         action=entry.data.get("action", 0),
         ble_device=ble_device,
     )
+
+    coordinator: DataUpdateCoordinator[dict] = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name=f"onecontrol_{address}",
+        update_method=client.get_system_info,
+        update_interval=SCAN_INTERVAL,
+    )
+
     hass.data[DOMAIN][entry.entry_id] = client
-    hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = None
+    hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = coordinator
 
     @callback
     def _async_update_ble(
@@ -64,6 +76,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    hass.async_create_task(coordinator.async_request_refresh())
+
     return True
 
 
