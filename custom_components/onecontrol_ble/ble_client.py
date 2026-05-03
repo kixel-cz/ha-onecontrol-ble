@@ -55,7 +55,6 @@ class SoloMiniClient:
                 self.address,
                 max_attempts=3,
             )
-        # Fallback na přímé připojení
         return BleakClient(self.address, timeout=CONNECT_TIMEOUT)
 
     async def open_gate(self) -> bool:
@@ -84,7 +83,6 @@ class SoloMiniClient:
             while not q.empty():
                 q.get_nowait()
 
-            # 1. StartSession
             await client.write_gatt_char(
                 TX_CHAR_UUID,
                 bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
@@ -94,7 +92,6 @@ class SoloMiniClient:
             _LOGGER.debug("Session: %s", resp.hex())
             our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
-            # 2. Zkus přímo s uloženým last_cc (CC optimalizace)
             current_cc = self.security.last_cc
             _LOGGER.debug("Trying with last_cc=%d", current_cc)
 
@@ -258,7 +255,6 @@ class SoloMiniClient:
             )
             await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
 
-            # Sbírej fragmenty
             frags: list[bytes] = []
             for _ in range(5):
                 try:
@@ -327,15 +323,13 @@ class SoloMiniClient:
                 if resp_cc is None:
                     return None
 
-                # Příkaz se serverovým SK+SID
                 pkt = build_open_command(
                     self.security.session_key,
                     self.security.session_id,
                     resp_cc,
                     self.security.user_id,
-                    action=0,  # unused — plaintext se předává níže
+                    action=0,
                 )
-                # Přepiš plaintext v paketu
                 import struct as _struct
 
                 from .protocol import CCM_TAG_LEN, build_tlv
@@ -364,14 +358,12 @@ class SoloMiniClient:
 
                 await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
 
-                # Čekej na response (clone_remote může trvat déle)
                 ack = await asyncio.wait_for(q.get(), timeout=timeout)
                 _LOGGER.debug("_do_transmit RX: %s", ack.hex())
 
                 if is_nack(ack):
                     return None
 
-                # Vrať první byte payloadu jako výsledek
                 if len(ack) >= 8:
                     return ack[3] & 0xFF
                 return 0
@@ -452,7 +444,7 @@ class SoloMiniClient:
         return result is not None
 
     async def set_device_name(self, name: str) -> bool:
-        name_bytes = name.encode("utf-8")[:20]  # max 20 znaků
+        name_bytes = name.encode("utf-8")[:4]
         plaintext = bytes([0x02]) + name_bytes
         result = await self._do_settings(plaintext)
         return result is not None
@@ -495,7 +487,6 @@ class SoloMiniClient:
                 if resp_cc is None:
                     return None
 
-                # Settings příkaz cmd=0x10
                 from Crypto.Cipher import AES as _AES
 
                 from .protocol import CCM_TAG_LEN, build_tlv
