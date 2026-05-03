@@ -94,6 +94,11 @@
       "opening_time": {
         "name": "Doba otevření"
       }
+    },
+    "text": {
+      "device_name": {
+        "name": "Název zařízení"
+      }
     }
   }
 }

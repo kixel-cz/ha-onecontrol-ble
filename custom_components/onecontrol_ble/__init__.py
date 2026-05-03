@@ -1,5 +1,4 @@
 """1Control SoloMini BLE integration for Home Assistant."""
-
 from __future__ import annotations
 
 import logging
@@ -20,7 +19,7 @@ from .protocol import SecurityData
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
-PLATFORMS = ["button", "cover", "number", "sensor"]
+PLATFORMS = ["button", "cover", "number", "sensor", "text"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

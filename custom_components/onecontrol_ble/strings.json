@@ -94,6 +94,11 @@
       "opening_time": {
         "name": "Opening time"
       }
+    },
+    "text": {
+      "device_name": {
+        "name": "Device name"
+      }
     }
   }
 }
