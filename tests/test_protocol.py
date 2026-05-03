@@ -26,7 +26,7 @@ from tests.conftest import (
 
 TEST_GREETING = bytes.fromhex("0011014940cabe843d90f4330a00002a000000")
 TEST_ASSEMBLED = bytes.fromhex(
-    "14f481f9a38e9161bf69c43c44a5821a3ec71f8a3d59ed029668827376000002000000"
+    "14f481f9a38e9161bf69c43c44a5821a3ec71f8a3d59ed5f25ea03dcd152000002000000"
 )
 
 
@@ -145,7 +145,6 @@ class TestIsNack:
 
 class TestExtractResponseCc:
     def test_extracts_cc(self):
-        # 16B response, CC=565 on position [12:14]
         pkt = bytes([0x00, 0x0E, 0x01] + [0] * 9 + [0x35, 0x02, 0x00, 0x00])
         assert extract_response_cc(pkt) == 0x0235
 
@@ -209,7 +208,6 @@ class TestBuildGetSystemInfo:
             bytes.fromhex(TEST_SESSION_ID),
             0,
         )
-        # cmd(1) + ct(1) + tag(6) + uid(2) + cc(4) = 14B + TLV(2) = 16B
         assert len(pkt) == 16
 
     def test_tlv_header(self):
@@ -238,14 +236,11 @@ class TestBuildGetSystemInfo:
 
 class TestAssembleFragments:
     def test_single_simple_packet(self):
-        # SimplePacket — type=0
         pkt = bytes([0x00, 0x05]) + b"hello"
         result = assemble_fragments([pkt])
         assert result == b"hello"
 
     def test_fragmented_three_parts(self):
-        # FragmentedPacket — type=4 -> (4<<4)|0 = 0x40
-        # Format: [0x40][length][total][index][data...]
         frag0 = bytes([0x40, 0x06, 0x03, 0x00]) + b"ab"
         frag1 = bytes([0x40, 0x06, 0x03, 0x01]) + b"cd"
         frag2 = bytes([0x40, 0x06, 0x03, 0x02]) + b"ef"
@@ -307,7 +302,7 @@ class TestDecryptSystemInfo:
 
         sk = bytes.fromhex(TEST_SESSION_KEY)
         sid = bytes.fromhex(TEST_SESSION_ID)
-        pt = bytes([0x01]) + bytes(17)
+        pt = bytes([0x01]) + bytes(17)  # rc=1
         resp_cc = 99
         nonce = bytes.fromhex(TEST_SESSION_ID)[:8] + struct.pack("<I", resp_cc)
         aad = struct.pack("<H", 0) + struct.pack("<I", resp_cc) + b"\x14"
