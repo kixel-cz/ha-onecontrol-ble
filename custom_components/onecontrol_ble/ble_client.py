@@ -464,15 +464,14 @@ class SoloMiniClient:
 
     async def _do_settings(self, plaintext: bytes) -> int | None:
         import struct as _struct
+
         try:
             random_a = os.urandom(8)
             q: asyncio.Queue[bytes] = asyncio.Queue()
 
             client = await self._get_client()
             async with client:
-                await client.start_notify(
-                    RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d))
-                )
+                await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
                     q.get_nowait()
@@ -484,9 +483,7 @@ class SoloMiniClient:
                     response=True,
                 )
                 resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                our_sid, our_sk = derive_session(
-                    self.security.ltk, random_a, resp[4:12]
-                )
+                our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
 
                 # Probe
                 probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
@@ -499,15 +496,13 @@ class SoloMiniClient:
                     return None
 
                 # Settings příkaz cmd=0x10
-                from .protocol import build_tlv, CCM_TAG_LEN
                 from Crypto.Cipher import AES as _AES
+
+                from .protocol import CCM_TAG_LEN, build_tlv
+
                 cc = resp_cc + 1
                 nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
-                aad = (
-                    _struct.pack("<H", self.security.user_id)
-                    + _struct.pack("<I", cc)
-                    + b"\x10"
-                )
+                aad = _struct.pack("<H", self.security.user_id) + _struct.pack("<I", cc) + b"\x10"
                 cipher = _AES.new(
                     self.security.session_key,
                     _AES.MODE_CCM,
