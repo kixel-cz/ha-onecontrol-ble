@@ -24,7 +24,6 @@ def make_device_pubkey_response(device_pub_bytes: bytes) -> bytes:
 
 
 class FakePairingClient:
-
     def __init__(self, device_pub_bytes: bytes):
         self._device_pub = device_pub_bytes
         self._notify_callback = None

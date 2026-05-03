@@ -1,4 +1,5 @@
 """1Control SoloMini BLE integration for Home Assistant."""
+
 from __future__ import annotations
 
 import logging
@@ -43,7 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ble_device=ble_device,
     )
     hass.data[DOMAIN][entry.entry_id] = client
-    hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = None 
+    hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = None
 
     @callback
     def _async_update_ble(

@@ -1,4 +1,5 @@
 """Text entity for SoloMini BLE."""
+
 from __future__ import annotations
 
 import logging
@@ -27,15 +28,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     client: SoloMiniClient = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DataUpdateCoordinator[dict[str, Any]] | None = (
-        hass.data[DOMAIN].get(f"{entry.entry_id}_coordinator")
+    coordinator: DataUpdateCoordinator[dict[str, Any]] | None = hass.data[DOMAIN].get(
+        f"{entry.entry_id}_coordinator"
     )
     async_add_entities([SoloMiniDeviceName(client, entry, coordinator)])
 
 
-class SoloMiniDeviceName(
-    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], TextEntity
-):
+class SoloMiniDeviceName(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], TextEntity):
     _attr_has_entity_name = True
     _attr_name = "Device name"
     _attr_icon = "mdi:label"

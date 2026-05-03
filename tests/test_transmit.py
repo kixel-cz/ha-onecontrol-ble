@@ -44,7 +44,6 @@ def make_client(security: SecurityData) -> SoloMiniClient:
 
 
 class FakeTransmitClient:
-
     def __init__(self, responses: list[bytes]):
         self._responses = list(responses)
         self._notify_callback = None

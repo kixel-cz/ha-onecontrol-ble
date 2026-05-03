@@ -1,4 +1,5 @@
 """Tests for set_device_name, set_dst and _do_settings."""
+
 from __future__ import annotations
 
 import struct
@@ -43,7 +44,6 @@ def make_client(security: SecurityData) -> SoloMiniClient:
 
 
 class FakeSettingsClient:
-
     def __init__(self, responses: list[bytes]):
         self._responses = list(responses)
         self._notify_callback = None

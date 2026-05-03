@@ -1,4 +1,5 @@
 """Switch entity for SoloMini BLE."""
+
 from __future__ import annotations
 
 import logging
@@ -27,15 +28,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     client: SoloMiniClient = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DataUpdateCoordinator[dict[str, Any]] | None = (
-        hass.data[DOMAIN].get(f"{entry.entry_id}_coordinator")
+    coordinator: DataUpdateCoordinator[dict[str, Any]] | None = hass.data[DOMAIN].get(
+        f"{entry.entry_id}_coordinator"
     )
     async_add_entities([SoloMiniDSTSwitch(client, entry, coordinator)])
 
 
-class SoloMiniDSTSwitch(
-    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SwitchEntity
-):
+class SoloMiniDSTSwitch(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SwitchEntity):
     _attr_has_entity_name = True
     _attr_name = "Daylight saving time"
     _attr_icon = "mdi:clock-time-eight"
@@ -53,9 +52,7 @@ class SoloMiniDSTSwitch(
             SwitchEntity.__init__(self)  # type: ignore[misc]
         self._client = client
         self._entry = entry
-        self._attr_unique_id = (
-            f"onecontrol_{entry.data['address'].replace(':', '').lower()}_dst"
-        )
+        self._attr_unique_id = f"onecontrol_{entry.data['address'].replace(':', '').lower()}_dst"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, entry.data["address"])},
         )

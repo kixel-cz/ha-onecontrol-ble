@@ -1,8 +1,9 @@
 """Battery and system sensors for 1Control SoloMini BLE."""
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -28,7 +29,7 @@ DOMAIN = "onecontrol_ble"
 SCAN_INTERVAL = timedelta(hours=1)
 
 BATTERY_HIGH = 3200  # TODO
-BATTERY_LOW  = 1800  # TODO
+BATTERY_LOW = 1800  # TODO
 
 
 def raw_to_percent(raw: int) -> int:
@@ -138,17 +139,13 @@ def _device_info(entry: ConfigEntry, data: dict[str, Any]) -> dr.DeviceInfo:
         model="SoloMini RE",
         sw_version=f"1.{version}" if version else None,
         hw_version=(
-            datetime.fromtimestamp(production, tz=timezone.utc).strftime("%Y-%m-%d")
-            if production
-            else None
+            datetime.fromtimestamp(production, tz=UTC).strftime("%Y-%m-%d") if production else None
         ),
         serial_number=str(data["serial"]) if data.get("serial") else None,
     )
 
 
-class SoloMiniBatterySensor(
-    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity
-):
+class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -183,9 +180,7 @@ class SoloMiniBatterySensor(
         return raw_to_percent(raw)
 
 
-class SoloMiniInfoSensor(
-    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity
-):
+class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(
@@ -198,8 +193,7 @@ class SoloMiniInfoSensor(
         self.entity_description = description
         self._entry = entry
         self._attr_unique_id = (
-            f"onecontrol_{entry.data['address'].replace(':', '').lower()}"
-            f"_{description.key}"
+            f"onecontrol_{entry.data['address'].replace(':', '').lower()}_{description.key}"
         )
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, entry.data["address"])},
