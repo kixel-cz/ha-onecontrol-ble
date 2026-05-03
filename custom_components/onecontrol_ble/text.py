@@ -1,4 +1,5 @@
 """Text entity pro nastavení názvu zařízení SoloMini BLE."""
+
 from __future__ import annotations
 
 import logging
