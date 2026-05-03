@@ -121,7 +121,6 @@ class TestBuildOpenCommand:
         assert pkt1 != pkt2
 
     def test_action_byte_clipped_to_byte(self, security):
-        """action & 0xFF — hodnota nad 255 se ořízne."""
         pkt1 = build_open_command(security.session_key, security.session_id, 0, action=0)
         pkt2 = build_open_command(security.session_key, security.session_id, 0, action=256)
         assert pkt1 == pkt2
@@ -239,14 +238,14 @@ class TestBuildGetSystemInfo:
 
 class TestAssembleFragments:
     def test_single_simple_packet(self):
-        # SimplePacket — type=0, přímý payload
+        # SimplePacket — type=0
         pkt = bytes([0x00, 0x05]) + b"hello"
         result = assemble_fragments([pkt])
         assert result == b"hello"
 
     def test_fragmented_three_parts(self):
-        # FragmentedPacket — type=4 → (4<<4)|0 = 0x40
-        # Formát: [0x40][length][total][index][data...]
+        # FragmentedPacket — type=4 -> (4<<4)|0 = 0x40
+        # Format: [0x40][length][total][index][data...]
         frag0 = bytes([0x40, 0x06, 0x03, 0x00]) + b"ab"
         frag1 = bytes([0x40, 0x06, 0x03, 0x01]) + b"cd"
         frag2 = bytes([0x40, 0x06, 0x03, 0x02]) + b"ef"
@@ -257,7 +256,6 @@ class TestAssembleFragments:
         frag0 = bytes([0x40, 0x06, 0x03, 0x00]) + b"ab"
         frag1 = bytes([0x40, 0x06, 0x03, 0x01]) + b"cd"
         frag2 = bytes([0x40, 0x06, 0x03, 0x02]) + b"ef"
-        # Pošli v jiném pořadí
         result = assemble_fragments([frag2, frag0, frag1])
         assert result == b"abcdef"
 

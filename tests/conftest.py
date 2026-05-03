@@ -7,7 +7,6 @@ import pytest
 
 from custom_components.onecontrol_ble.protocol import SecurityData
 
-# Testovací klíče — vygenerované náhodně, matematicky konzistentní
 TEST_LTK = "C4F6E72CA3FC7399C8330D513C71BBFB"
 TEST_RANDOM_A = "93FD94616A8B8639"
 TEST_RANDOM_B = "315B7F0C4F4CEA1D"

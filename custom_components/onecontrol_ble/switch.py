@@ -1,10 +1,10 @@
-"""Text entity for SoloMini BLE."""
+"""Switch entity for SoloMini BLE."""
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from homeassistant.components.text import TextEntity, TextMode
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -30,19 +30,16 @@ async def async_setup_entry(
     coordinator: DataUpdateCoordinator[dict[str, Any]] | None = (
         hass.data[DOMAIN].get(f"{entry.entry_id}_coordinator")
     )
-    async_add_entities([SoloMiniDeviceName(client, entry, coordinator)])
+    async_add_entities([SoloMiniDSTSwitch(client, entry, coordinator)])
 
 
-class SoloMiniDeviceName(
-    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], TextEntity
+class SoloMiniDSTSwitch(
+    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SwitchEntity
 ):
     _attr_has_entity_name = True
-    _attr_name = "Device name"
-    _attr_icon = "mdi:label"
+    _attr_name = "Daylight saving time"
+    _attr_icon = "mdi:clock-time-eight"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_mode = TextMode.TEXT
-    _attr_native_min = 1
-    _attr_native_max = 4  # BLE MTU limit 20B -> max 4 chars
 
     def __init__(
         self,
@@ -53,31 +50,36 @@ class SoloMiniDeviceName(
         if coordinator is not None:
             super().__init__(coordinator)
         else:
-            TextEntity.__init__(self)  # type: ignore[misc]
+            SwitchEntity.__init__(self)  # type: ignore[misc]
         self._client = client
         self._entry = entry
         self._attr_unique_id = (
-            f"onecontrol_{entry.data['address'].replace(':', '').lower()}_device_name"
+            f"onecontrol_{entry.data['address'].replace(':', '').lower()}_dst"
         )
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, entry.data["address"])},
         )
 
     @property
-    def native_value(self) -> str | None:
+    def is_on(self) -> bool | None:
         if hasattr(self, "coordinator") and self.coordinator.data:
-            name = self.coordinator.data.get("name", "")
-            return name[:4] if name else None
+            return self.coordinator.data.get("dst")
         return None
 
-    async def async_set_value(self, value: str) -> None:
-        if len(value) > 4:
-            _LOGGER.warning("Device name truncated to 4 characters (BLE MTU limit)")
-            value = value[:4]
-        ok = await self._client.set_device_name(value)  # type: ignore[attr-defined]
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        ok = await self._client.set_dst(True)  # type: ignore[attr-defined]
         if ok:
-            _LOGGER.info("Device name set to '%s'", value)
+            _LOGGER.info("DST enabled")
             if hasattr(self, "coordinator"):
                 await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set device name")
+            _LOGGER.error("Failed to enable DST")
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        ok = await self._client.set_dst(False)  # type: ignore[attr-defined]
+        if ok:
+            _LOGGER.info("DST disabled")
+            if hasattr(self, "coordinator"):
+                await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to disable DST")

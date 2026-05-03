@@ -1,4 +1,4 @@
-"""Config flow pro 1Control SoloMini BLE."""
+"""Config flow for 1Control SoloMini BLE."""
 
 from __future__ import annotations
 
@@ -120,7 +120,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             if not address:
                 errors["address"] = "address_required"
             else:
-                # Spusť párování
                 try:
                     from .ble_client import SoloMiniClient
                     from .protocol import SecurityData
@@ -137,8 +136,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     else:
                         self._paired_ltk = result.ltk.hex().upper()
                         self._discovered_address = address
-                        # Po párování je session_key/session_id prázdné —
-                        # uživatel musí spustit appku a zachytit mitmproxy log
                         self._parsed = {"ltk": self._paired_ltk}
                         return await self.async_step_mitm()
                 except Exception as e:
@@ -173,7 +170,6 @@ class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 parsed = parse_mitm_log(mitm_log)
                 if parsed.get("ltk") and parsed.get("session_key") and parsed.get("session_id"):
                     self._parsed = parsed
-                    # Pokud jsme párovali, přepiš LTK z párování
                     if self._paired_ltk:
                         self._parsed["ltk"] = self._paired_ltk
                 else:

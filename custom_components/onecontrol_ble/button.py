@@ -1,4 +1,4 @@
-"""Button entity pro 1Control SoloMini BLE."""
+"""Button entity for 1Control SoloMini BLE."""
 
 from __future__ import annotations
 

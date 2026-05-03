@@ -1,9 +1,8 @@
 """Battery and system sensors for 1Control SoloMini BLE."""
-
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -29,7 +28,7 @@ DOMAIN = "onecontrol_ble"
 SCAN_INTERVAL = timedelta(hours=1)
 
 BATTERY_HIGH = 3200  # TODO
-BATTERY_LOW = 1800  # TODO
+BATTERY_LOW  = 1800  # TODO
 
 
 def raw_to_percent(raw: int) -> int:
@@ -49,18 +48,18 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
-        key="name",
+        key="device_name",
         name="Device Name",
         icon="mdi:label",
     ),
     SensorEntityDescription(
-        key="version",
+        key="firmware_version",
         name="Firmware Version",
         icon="mdi:chip",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
-        key="production",
+        key="production_date",
         name="Production Date",
         icon="mdi:calendar",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -92,7 +91,7 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
-        key="dst",
+        key="dst_enabled",
         name="DST Enabled",
         icon="mdi:clock-time-eight",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -136,17 +135,20 @@ def _device_info(entry: ConfigEntry, data: dict[str, Any]) -> dr.DeviceInfo:
         identifiers={(DOMAIN, entry.data["address"])},
         name=entry.data.get("name", "SoloMini"),
         manufacturer="1Control",
-        model="SoloMini",
+        model="SoloMini RE",
         sw_version=f"1.{version}" if version else None,
         hw_version=(
-            datetime.fromtimestamp(production, tz=UTC).strftime("%Y-%m-%d") if production else None
+            datetime.fromtimestamp(production, tz=timezone.utc).strftime("%Y-%m-%d")
+            if production
+            else None
         ),
         serial_number=str(data["serial"]) if data.get("serial") else None,
-        connections={(dr.CONNECTION_BLUETOOTH, entry.data["address"])},
     )
 
 
-class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
+class SoloMiniBatterySensor(
+    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity
+):
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -181,7 +183,9 @@ class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, An
         return raw_to_percent(raw)
 
 
-class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
+class SoloMiniInfoSensor(
+    CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity
+):
     _attr_has_entity_name = True
 
     def __init__(
@@ -194,7 +198,8 @@ class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
         self.entity_description = description
         self._entry = entry
         self._attr_unique_id = (
-            f"onecontrol_{entry.data['address'].replace(':', '').lower()}_{description.key}"
+            f"onecontrol_{entry.data['address'].replace(':', '').lower()}"
+            f"_{description.key}"
         )
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, entry.data["address"])},
@@ -204,11 +209,4 @@ class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
     def native_value(self) -> Any:
         if not self.coordinator.data:
             return None
-        value = self.coordinator.data.get(self.entity_description.key)
-        # Převod epoch na datum
-        if self.entity_description.key == "production" and value:
-            return datetime.fromtimestamp(value, tz=UTC).strftime("%Y-%m-%d")
-        # Převod version na string
-        if self.entity_description.key == "version" and value is not None:
-            return f"1.{value}"
-        return value
+        return self.coordinator.data.get(self.entity_description.key)

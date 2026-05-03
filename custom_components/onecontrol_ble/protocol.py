@@ -132,7 +132,7 @@ def decrypt_system_info(
     cmd = assembled[0]
     d = assembled
     cc = (d[-4] & 0xFF) | ((d[-3] & 0xFF) << 8) | ((d[-2] & 0xFF) << 16) | ((d[-1] & 0xFF) << 24)
-    b_arr = assembled[1:-6]  # bez cmd(1B) a bez posledních 6B
+    b_arr = assembled[1:-6]
 
     nonce = session_id[:8] + struct.pack("<I", cc)
     aad = struct.pack("<H", 0) + struct.pack("<I", cc) + bytes([cmd])

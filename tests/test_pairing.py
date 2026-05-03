@@ -1,4 +1,4 @@
-"""Testy párování přes ECDH (ble_client.pair())."""
+"""Pairing tests via ECDH (ble_client.pair())."""
 
 from __future__ import annotations
 
@@ -19,13 +19,11 @@ def make_dummy_security() -> SecurityData:
 
 
 def make_device_pubkey_response(device_pub_bytes: bytes) -> bytes:
-    """Sestaví fake StartPairing response."""
     # [00][42][90][00][device_pubkey_64B]
     return bytes([0x00, 0x42, 0x90, 0x00]) + device_pub_bytes
 
 
 class FakePairingClient:
-    """Falešný BleakClient pro testování párování."""
 
     def __init__(self, device_pub_bytes: bytes):
         self._device_pub = device_pub_bytes
@@ -51,7 +49,6 @@ class FakePairingClient:
 class TestPairing:
     @pytest.mark.asyncio
     async def test_pair_returns_security_data(self):
-        """Úspěšné párování vrátí SecurityData s LTK."""
         from cryptography.hazmat.primitives.asymmetric.ec import (
             SECP256R1,
             generate_private_key,
@@ -61,12 +58,11 @@ class TestPairing:
             PublicFormat,
         )
 
-        # Vygeneruj fake device keypair
         device_private = generate_private_key(SECP256R1())
         device_public = device_private.public_key()
         device_pub_bytes = device_public.public_bytes(
             Encoding.X962, PublicFormat.UncompressedPoint
-        )[1:]  # 64B bez 0x04 prefix
+        )[1:]
 
         fake_ble = FakePairingClient(device_pub_bytes)
         client = SoloMiniClient(
@@ -82,11 +78,10 @@ class TestPairing:
 
         assert result is not None
         assert len(result.ltk) == 16
-        assert result.ltk != bytes(16)  # LTK není nulový
+        assert result.ltk != bytes(16)
 
     @pytest.mark.asyncio
     async def test_pair_sends_correct_packet(self):
-        """Párování pošle správný StartPairing paket."""
         from cryptography.hazmat.primitives.asymmetric.ec import (
             SECP256R1,
             generate_private_key,
@@ -124,7 +119,6 @@ class TestPairing:
 
     @pytest.mark.asyncio
     async def test_pair_invalid_response_returns_none(self):
-        """Neplatná response vrátí None."""
 
         class BadResponseClient:
             async def __aenter__(self):
@@ -137,7 +131,6 @@ class TestPairing:
                 self._cb = cb
 
             async def write_gatt_char(self, uuid, data, response=True):
-                # Pošli příliš krátkou response
                 self._cb(None, bytearray(bytes([0x00, 0x04, 0x90, 0x00])))
 
         client = SoloMiniClient(
@@ -155,7 +148,6 @@ class TestPairing:
 
     @pytest.mark.asyncio
     async def test_pair_two_devices_different_ltk(self):
-        """Dvě různá zařízení → různé LTK."""
         from cryptography.hazmat.primitives.asymmetric.ec import (
             SECP256R1,
             generate_private_key,
@@ -184,12 +176,10 @@ class TestPairing:
             assert result is not None
             results.append(result.ltk)
 
-        # Dvě různá zařízení → různé LTK (extrémně nepravděpodobné že by byly stejné)
         assert results[0] != results[1]
 
     @pytest.mark.asyncio
     async def test_pair_connection_error_returns_none(self):
-        """Chyba připojení vrátí None."""
         client = SoloMiniClient(
             address="AA:BB:CC:DD:EE:FF",
             security=make_dummy_security(),

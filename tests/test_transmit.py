@@ -1,4 +1,4 @@
-"""Testy pro clone_remote, set_opening_time a _do_transmit."""
+"""Tests for clone_remote, set_opening_time and _do_transmit."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ def make_probe_response(cc: int) -> bytes:
 
 
 def make_transmit_response(slot: int) -> bytes:
-    """Fake TransmitRequest response s hodnotou slotu."""
     return bytes([0x00, 0x0E, 0x01, slot & 0xFF] + [0] * 12)
 
 
@@ -45,7 +44,6 @@ def make_client(security: SecurityData) -> SoloMiniClient:
 
 
 class FakeTransmitClient:
-    """Falešný BleakClient pro testování TransmitRequest."""
 
     def __init__(self, responses: list[bytes]):
         self._responses = list(responses)
@@ -71,7 +69,6 @@ class FakeTransmitClient:
 class TestCloneRemote:
     @pytest.mark.asyncio
     async def test_clone_remote_returns_slot(self, security):
-        """Úspěšné klonování vrátí číslo slotu."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -92,11 +89,10 @@ class TestCloneRemote:
 
     @pytest.mark.asyncio
     async def test_clone_remote_nack_returns_none(self, security):
-        """NACK na probe vrátí None."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
-            NACK,  # probe → NACK
+            NACK,  # probe -> NACK
         ]
         fake_ble = FakeTransmitClient(responses)
         client = make_client(security)
@@ -111,7 +107,6 @@ class TestCloneRemote:
 
     @pytest.mark.asyncio
     async def test_clone_remote_sends_correct_plaintext(self, security):
-        """clone_remote pošle správný počet paketů."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -127,12 +122,11 @@ class TestCloneRemote:
         ):
             await client.clone_remote(action=0)
 
-        # StartSession + probe + clone = 3 pakety
+        # StartSession + probe + clone = 3 packets
         assert len(fake_ble.written) == 3
 
     @pytest.mark.asyncio
     async def test_clone_remote_connection_error_returns_none(self, security):
-        """Chyba připojení vrátí None."""
         from unittest.mock import AsyncMock, MagicMock
 
         async def fail(*args, **kwargs):
@@ -155,7 +149,6 @@ class TestCloneRemote:
 class TestSetOpeningTime:
     @pytest.mark.asyncio
     async def test_set_opening_time_success(self, security):
-        """Úspěšné nastavení doby otevření."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -175,7 +168,6 @@ class TestSetOpeningTime:
 
     @pytest.mark.asyncio
     async def test_set_opening_time_sends_three_packets(self, security):
-        """set_opening_time pošle StartSession + probe + příkaz."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -195,7 +187,6 @@ class TestSetOpeningTime:
 
     @pytest.mark.asyncio
     async def test_set_opening_time_zero(self, security):
-        """Nastavení doby 0 (výchozí) funguje."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -215,7 +206,6 @@ class TestSetOpeningTime:
 
     @pytest.mark.asyncio
     async def test_set_opening_time_nack_returns_none(self, security):
-        """NACK vrátí None."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -236,7 +226,6 @@ class TestSetOpeningTime:
 class TestScannerFlow:
     @pytest.mark.asyncio
     async def test_start_scanner_success(self, security):
-        """start_scanner vrátí True při úspěchu."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -256,7 +245,6 @@ class TestScannerFlow:
 
     @pytest.mark.asyncio
     async def test_confirm_scanner_success(self, security):
-        """confirm_scanner vrátí True při úspěchu."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -276,7 +264,6 @@ class TestScannerFlow:
 
     @pytest.mark.asyncio
     async def test_complete_scanner_success(self, security):
-        """complete_scanner vrátí True při úspěchu."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -296,7 +283,6 @@ class TestScannerFlow:
 
     @pytest.mark.asyncio
     async def test_undo_scanner_success(self, security):
-        """undo_scanner vrátí True při úspěchu."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -316,7 +302,6 @@ class TestScannerFlow:
 
     @pytest.mark.asyncio
     async def test_start_scanner_nack_returns_false(self, security):
-        """NACK na probe vrátí False."""
         random_b = bytes(range(8))
         responses = [
             make_session_response(random_b),
@@ -335,7 +320,6 @@ class TestScannerFlow:
 
     @pytest.mark.asyncio
     async def test_full_scanner_flow(self, security):
-        """Kompletní flow: start → confirm → complete."""
         random_b = bytes(range(8))
 
         async def run_step(plaintext_byte: int) -> bool:

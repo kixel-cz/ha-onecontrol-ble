@@ -1,4 +1,4 @@
-"""Number entity pro nastavení doby otevření SoloMini BLE."""
+"""Number entity for SoloMini BLE."""
 
 from __future__ import annotations
 
