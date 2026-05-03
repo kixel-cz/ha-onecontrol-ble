@@ -450,3 +450,90 @@ class SoloMiniClient:
     async def undo_scanner(self, action: int = 0) -> bool:
         result = await self._do_transmit(bytes([0x0F, action & 0xFF]))
         return result is not None
+
+    async def set_device_name(self, name: str) -> bool:
+        name_bytes = name.encode("utf-8")[:20]  # max 20 znaků
+        plaintext = bytes([0x02]) + name_bytes
+        result = await self._do_settings(plaintext)
+        return result is not None
+
+    async def set_dst(self, enabled: bool) -> bool:
+        plaintext = bytes([0x03, 0x01 if enabled else 0x00])
+        result = await self._do_settings(plaintext)
+        return result is not None
+
+    async def _do_settings(self, plaintext: bytes) -> int | None:
+        import struct as _struct
+        try:
+            random_a = os.urandom(8)
+            q: asyncio.Queue[bytes] = asyncio.Queue()
+
+            client = await self._get_client()
+            async with client:
+                await client.start_notify(
+                    RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d))
+                )
+                await asyncio.sleep(0.3)
+                while not q.empty():
+                    q.get_nowait()
+
+                # StartSession
+                await client.write_gatt_char(
+                    TX_CHAR_UUID,
+                    bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
+                    response=True,
+                )
+                resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+                our_sid, our_sk = derive_session(
+                    self.security.ltk, random_a, resp[4:12]
+                )
+
+                # Probe
+                probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
+                await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
+                r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+                if is_nack(r):
+                    return None
+                resp_cc = extract_response_cc(r)
+                if resp_cc is None:
+                    return None
+
+                # Settings příkaz cmd=0x10
+                from .protocol import build_tlv, CCM_TAG_LEN
+                from Crypto.Cipher import AES as _AES
+                cc = resp_cc + 1
+                nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
+                aad = (
+                    _struct.pack("<H", self.security.user_id)
+                    + _struct.pack("<I", cc)
+                    + b"\x10"
+                )
+                cipher = _AES.new(
+                    self.security.session_key,
+                    _AES.MODE_CCM,
+                    nonce=nonce,
+                    mac_len=CCM_TAG_LEN,
+                )
+                cipher.update(aad)
+                ct, tag = cipher.encrypt_and_digest(plaintext)
+                payload = (
+                    b"\x10"
+                    + ct
+                    + tag
+                    + _struct.pack("<H", self.security.user_id)
+                    + _struct.pack("<I", cc)
+                )
+                pkt = build_tlv(payload)
+                await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
+
+                ack = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+                _LOGGER.debug("_do_settings RX: %s", ack.hex())
+                if is_nack(ack):
+                    return None
+                if len(ack) >= 4:
+                    return ack[3] & 0xFF
+                return 0
+
+        except Exception as e:
+            _LOGGER.error("_do_settings failed: %s", e)
+            return None
