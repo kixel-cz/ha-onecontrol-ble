@@ -159,6 +159,6 @@ def decrypt_system_info(
         "version": pt[15],
         "dst": bool(pt[16]),
         "sys_options": pt[17],
-        "name": pt[18:].decode("utf-8", "ignore") if len(pt) > 18 else "",
+        "name": pt[18:-1].rstrip(b"\\x00").decode("utf-8", "ignore") if len(pt) > 19 else "",
     }
     return result
