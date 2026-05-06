@@ -1,4 +1,3 @@
-pyyaml>=6.0.2
 aioesphomeapi
 aiousbwatcher
 bleak
