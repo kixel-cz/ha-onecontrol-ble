@@ -8,3 +8,4 @@ bleak
 homeassistant
 pyserial
 aiousbwatcher
+serialx
