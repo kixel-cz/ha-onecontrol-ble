@@ -78,6 +78,12 @@ class SoloMiniClient:
         client = await self._get_client()
         async with client:
             _LOGGER.debug("Connected to %s", self.address)
+            try:
+                if hasattr(client, "_backend"):
+                    client._backend._mtu_size = 247  # type: ignore[attr-defined]
+                    _LOGGER.debug("MTU set to 247")
+            except Exception:
+                pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
@@ -222,6 +228,12 @@ class SoloMiniClient:
 
         client = await self._get_client()
         async with client:
+            try:
+                if hasattr(client, "_backend"):
+                    client._backend._mtu_size = 247  # type: ignore[attr-defined]
+                    _LOGGER.debug("MTU set to 247")
+            except Exception:
+                pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
@@ -299,6 +311,12 @@ class SoloMiniClient:
 
             client = await self._get_client()
             async with client:
+                try:
+                    if hasattr(client, "_backend"):
+                        client._backend._mtu_size = 247  # type: ignore[attr-defined]
+                        _LOGGER.debug("MTU set to 247")
+                except Exception:
+                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
@@ -394,6 +412,12 @@ class SoloMiniClient:
             q: asyncio.Queue[bytes] = asyncio.Queue()
             client = await self._get_client()
             async with client:
+                try:
+                    if hasattr(client, "_backend"):
+                        client._backend._mtu_size = 247  # type: ignore[attr-defined]
+                        _LOGGER.debug("MTU set to 247")
+                except Exception:
+                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.2)
 
@@ -463,6 +487,12 @@ class SoloMiniClient:
 
             client = await self._get_client()
             async with client:
+                try:
+                    if hasattr(client, "_backend"):
+                        client._backend._mtu_size = 247  # type: ignore[attr-defined]
+                        _LOGGER.debug("MTU set to 247")
+                except Exception:
+                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
@@ -575,6 +605,12 @@ class SoloMiniClient:
 
             client = await self._get_client()
             async with client:
+                try:
+                    if hasattr(client, "_backend"):
+                        client._backend._mtu_size = 247  # type: ignore[attr-defined]
+                        _LOGGER.debug("MTU set to 247")
+                except Exception:
+                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
@@ -758,6 +794,12 @@ class SoloMiniClient:
 
         client = await self._get_client()
         async with client:
+            try:
+                if hasattr(client, "_backend"):
+                    client._backend._mtu_size = 247  # type: ignore[attr-defined]
+                    _LOGGER.debug("MTU set to 247")
+            except Exception:
+                pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():

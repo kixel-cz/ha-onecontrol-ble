@@ -47,27 +47,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ble_device=ble_device,
     )
 
+    async def _fetch_all() -> dict:
+        result: dict = {}
+        try:
+            system_info = await client.get_system_info()
+            result.update(system_info)
+        except Exception as e:
+            _LOGGER.error("Failed to get system info: %s", e)
+
+        try:
+            users = await client.get_users()
+            result["users"] = users
+        except Exception as e:
+            _LOGGER.error("Failed to get users: %s", e)
+            result["users"] = []
+
+        return result
+
     coordinator: DataUpdateCoordinator[dict] = DataUpdateCoordinator(
         hass,
         _LOGGER,
         name=f"onecontrol_{address}",
-        update_method=client.get_system_info,
+        update_method=_fetch_all,
         update_interval=SCAN_INTERVAL,
     )
 
     hass.data[DOMAIN][entry.entry_id] = client
     hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = coordinator
-
-    from datetime import timedelta
-
-    users_coordinator: DataUpdateCoordinator[list] = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=f"onecontrol_{address}_users",
-        update_method=client.get_users,
-        update_interval=timedelta(hours=6),
-    )
-    hass.data[DOMAIN][f"{entry.entry_id}_users_coordinator"] = users_coordinator
+    hass.data[DOMAIN][f"{entry.entry_id}_users_coordinator"] = coordinator
 
     @callback
     def _async_update_ble(
@@ -89,34 +96,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     hass.async_create_task(coordinator.async_request_refresh())
-    hass.async_create_task(users_coordinator.async_request_refresh())
 
     from homeassistant.core import ServiceCall
 
     async def handle_add_user(call: ServiceCall) -> None:
         entry_id = call.data["config_entry_id"]
-        client: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
-        if not client:
+        c: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
+        if not c:
             return
-        result = await client.add_user()  # type: ignore[attr-defined]
+        result = await c.add_user()  # type: ignore[attr-defined]
         if result:
             _LOGGER.warning(
                 "User added: uid=%d, ltk=%s (save this LTK!)", result["uid"], result["ltk"]
             )
-            uc = hass.data[DOMAIN].get(f"{entry_id}_users_coordinator")
+            uc = hass.data[DOMAIN].get(f"{entry_id}_coordinator")
             if uc:
                 await uc.async_request_refresh()
 
     async def handle_delete_user(call: ServiceCall) -> None:
         entry_id = call.data["config_entry_id"]
         uid = int(call.data["uid"])
-        client: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
-        if not client:
+        c: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
+        if not c:
             return
-        ok = await client.delete_user(uid)  # type: ignore[attr-defined]
+        ok = await c.delete_user(uid)  # type: ignore[attr-defined]
         _LOGGER.info("Delete user uid=%d: %s", uid, "OK" if ok else "FAILED")
         if ok:
-            uc = hass.data[DOMAIN].get(f"{entry_id}_users_coordinator")
+            uc = hass.data[DOMAIN].get(f"{entry_id}_coordinator")
             if uc:
                 await uc.async_request_refresh()
 
@@ -124,13 +130,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry_id = call.data["config_entry_id"]
         uid = int(call.data["uid"])
         name = str(call.data["name"])
-        client: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
-        if not client:
+        c: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
+        if not c:
             return
-        ok = await client.set_user_name(uid, name)  # type: ignore[attr-defined]
+        ok = await c.set_user_name(uid, name)  # type: ignore[attr-defined]
         _LOGGER.info("Set user name uid=%d name=%s: %s", uid, name, "OK" if ok else "FAILED")
         if ok:
-            uc = hass.data[DOMAIN].get(f"{entry_id}_users_coordinator")
+            uc = hass.data[DOMAIN].get(f"{entry_id}_coordinator")
             if uc:
                 await uc.async_request_refresh()
 
