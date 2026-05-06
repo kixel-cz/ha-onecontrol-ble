@@ -132,7 +132,7 @@ Users stored on the device can be viewed in the **Users** sensor attributes. Use
 | Service | Description |
 |---------|-------------|
 | `onecontrol_ble.add_user` | Add a new user — returns uid and LTK in the HA log |
-| `onecontrol_ble.delete_user` | Delete a user by uid |
+| `onecontrol_ble.delete_user` | Delete a user by uid (requires server token — may not work without 1Control cloud) |
 | `onecontrol_ble.set_user_name` | Rename a user |
 
 > **Note:** When adding a user, the new user's LTK is logged as a WARNING in the HA log. Save it — it cannot be retrieved again.
