@@ -79,8 +79,9 @@ class SoloMiniClient:
         async with client:
             _LOGGER.debug("Connected to %s", self.address)
             try:
-                await client.request_mtu(247)  # type: ignore[attr-defined]
-                _LOGGER.debug("MTU negotiated to 247")
+                if hasattr(client, "_backend") and hasattr(client._backend, "_acquire_mtu"):
+                    await client._backend._acquire_mtu()  # type: ignore[attr-defined]
+                _LOGGER.debug("MTU: %d", client.mtu_size)
             except Exception:
                 pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
@@ -228,8 +229,9 @@ class SoloMiniClient:
         client = await self._get_client()
         async with client:
             try:
-                await client.request_mtu(247)  # type: ignore[attr-defined]
-                _LOGGER.debug("MTU negotiated to 247")
+                if hasattr(client, "_backend") and hasattr(client._backend, "_acquire_mtu"):
+                    await client._backend._acquire_mtu()  # type: ignore[attr-defined]
+                _LOGGER.debug("MTU: %d", client.mtu_size)
             except Exception:
                 pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
@@ -789,8 +791,9 @@ class SoloMiniClient:
         client = await self._get_client()
         async with client:
             try:
-                await client.request_mtu(247)  # type: ignore[attr-defined]
-                _LOGGER.debug("MTU negotiated to 247")
+                if hasattr(client, "_backend") and hasattr(client._backend, "_acquire_mtu"):
+                    await client._backend._acquire_mtu()  # type: ignore[attr-defined]
+                _LOGGER.debug("MTU: %d", client.mtu_size)
             except Exception:
                 pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
