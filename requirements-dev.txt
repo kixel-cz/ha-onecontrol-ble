@@ -11,4 +11,4 @@ serialx
 aiousbwatcher
 aioesphomeapi
 cryptography
-pytest-homeassistant-custom-component>=1.3.0
+pytest-homeassistant-custom-component
