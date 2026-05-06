@@ -818,3 +818,22 @@ class SoloMiniClient:
 
             _LOGGER.debug("Loaded %d users", len(users))
             return users
+
+    async def add_user(self) -> dict | None:
+        result = await self._do_user_cmd(bytes([0x0C]))
+        if result and len(result) >= 18:
+            uid = int.from_bytes(result[0:2], "little")
+            ltk = result[2:18].hex().upper()
+            _LOGGER.info("User added: uid=%d, ltk=%s", uid, ltk)
+            return {"uid": uid, "ltk": ltk}
+        return None
+
+    async def delete_user(self, uid: int) -> bool:
+        result = await self._do_user_cmd(bytes([0x06, uid & 0xFF, (uid >> 8) & 0xFF]))
+        return result is not None
+
+    async def set_user_name(self, uid: int, name: str) -> bool:
+        name_bytes = name.encode("utf-8")
+        plaintext = bytes([0x04, uid & 0xFF, (uid >> 8) & 0xFF]) + name_bytes
+        result = await self._do_user_cmd(plaintext)
+        return result is not None

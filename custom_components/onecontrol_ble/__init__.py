@@ -91,6 +91,53 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.async_create_task(coordinator.async_request_refresh())
     hass.async_create_task(users_coordinator.async_request_refresh())
 
+    from homeassistant.core import ServiceCall
+
+    async def handle_add_user(call: ServiceCall) -> None:
+        entry_id = call.data["config_entry_id"]
+        client: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
+        if not client:
+            return
+        result = await client.add_user()  # type: ignore[attr-defined]
+        if result:
+            _LOGGER.warning(
+                "User added: uid=%d, ltk=%s (save this LTK!)", result["uid"], result["ltk"]
+            )
+            uc = hass.data[DOMAIN].get(f"{entry_id}_users_coordinator")
+            if uc:
+                await uc.async_request_refresh()
+
+    async def handle_delete_user(call: ServiceCall) -> None:
+        entry_id = call.data["config_entry_id"]
+        uid = int(call.data["uid"])
+        client: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
+        if not client:
+            return
+        ok = await client.delete_user(uid)  # type: ignore[attr-defined]
+        _LOGGER.info("Delete user uid=%d: %s", uid, "OK" if ok else "FAILED")
+        if ok:
+            uc = hass.data[DOMAIN].get(f"{entry_id}_users_coordinator")
+            if uc:
+                await uc.async_request_refresh()
+
+    async def handle_set_user_name(call: ServiceCall) -> None:
+        entry_id = call.data["config_entry_id"]
+        uid = int(call.data["uid"])
+        name = str(call.data["name"])
+        client: SoloMiniClient = hass.data[DOMAIN].get(entry_id)
+        if not client:
+            return
+        ok = await client.set_user_name(uid, name)  # type: ignore[attr-defined]
+        _LOGGER.info("Set user name uid=%d name=%s: %s", uid, name, "OK" if ok else "FAILED")
+        if ok:
+            uc = hass.data[DOMAIN].get(f"{entry_id}_users_coordinator")
+            if uc:
+                await uc.async_request_refresh()
+
+    hass.services.async_register(DOMAIN, "add_user", handle_add_user)
+    hass.services.async_register(DOMAIN, "delete_user", handle_delete_user)
+    hass.services.async_register(DOMAIN, "set_user_name", handle_set_user_name)
+
     return True
 
 

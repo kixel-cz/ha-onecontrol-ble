@@ -1,0 +1,59 @@
+add_user:
+  name: Add user
+  description: Add a new user to the SoloMini device. Returns the new user ID and LTK key in the HA log.
+  fields:
+    config_entry_id:
+      name: Integration entry
+      description: The SoloMini integration entry ID
+      required: true
+      selector:
+        config_entry:
+          integration: onecontrol_ble
+
+delete_user:
+  name: Delete user
+  description: Delete a user from the SoloMini device.
+  fields:
+    config_entry_id:
+      name: Integration entry
+      description: The SoloMini integration entry ID
+      required: true
+      selector:
+        config_entry:
+          integration: onecontrol_ble
+    uid:
+      name: User ID
+      description: The user ID to delete (uid from the Users sensor attributes)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 65535
+          mode: box
+
+set_user_name:
+  name: Set user name
+  description: Rename a user on the SoloMini device.
+  fields:
+    config_entry_id:
+      name: Integration entry
+      description: The SoloMini integration entry ID
+      required: true
+      selector:
+        config_entry:
+          integration: onecontrol_ble
+    uid:
+      name: User ID
+      description: The user ID to rename
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 65535
+          mode: box
+    name:
+      name: Name
+      description: New name for the user
+      required: true
+      selector:
+        text:
