@@ -78,12 +78,6 @@ class SoloMiniClient:
         client = await self._get_client()
         async with client:
             _LOGGER.debug("Connected to %s", self.address)
-            try:
-                if hasattr(client, "_backend") and hasattr(client._backend, "_acquire_mtu"):
-                    await client._backend._acquire_mtu()  # type: ignore[attr-defined]
-                _LOGGER.debug("MTU: %d", client.mtu_size)
-            except Exception:
-                pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
@@ -228,12 +222,6 @@ class SoloMiniClient:
 
         client = await self._get_client()
         async with client:
-            try:
-                if hasattr(client, "_backend") and hasattr(client._backend, "_acquire_mtu"):
-                    await client._backend._acquire_mtu()  # type: ignore[attr-defined]
-                _LOGGER.debug("MTU: %d", client.mtu_size)
-            except Exception:
-                pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
@@ -311,11 +299,6 @@ class SoloMiniClient:
 
             client = await self._get_client()
             async with client:
-                try:
-                    await client.request_mtu(247)  # type: ignore[attr-defined]
-                    _LOGGER.debug("MTU negotiated to 247")
-                except Exception:
-                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
@@ -411,11 +394,6 @@ class SoloMiniClient:
             q: asyncio.Queue[bytes] = asyncio.Queue()
             client = await self._get_client()
             async with client:
-                try:
-                    await client.request_mtu(247)  # type: ignore[attr-defined]
-                    _LOGGER.debug("MTU negotiated to 247")
-                except Exception:
-                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.2)
 
@@ -485,11 +463,6 @@ class SoloMiniClient:
 
             client = await self._get_client()
             async with client:
-                try:
-                    await client.request_mtu(247)  # type: ignore[attr-defined]
-                    _LOGGER.debug("MTU negotiated to 247")
-                except Exception:
-                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
@@ -602,11 +575,6 @@ class SoloMiniClient:
 
             client = await self._get_client()
             async with client:
-                try:
-                    await client.request_mtu(247)  # type: ignore[attr-defined]
-                    _LOGGER.debug("MTU negotiated to 247")
-                except Exception:
-                    pass
                 await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
                 await asyncio.sleep(0.3)
                 while not q.empty():
@@ -790,12 +758,6 @@ class SoloMiniClient:
 
         client = await self._get_client()
         async with client:
-            try:
-                if hasattr(client, "_backend") and hasattr(client._backend, "_acquire_mtu"):
-                    await client._backend._acquire_mtu()  # type: ignore[attr-defined]
-                _LOGGER.debug("MTU: %d", client.mtu_size)
-            except Exception:
-                pass
             await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
             await asyncio.sleep(0.3)
             while not q.empty():
@@ -840,7 +802,6 @@ class SoloMiniClient:
                     return -1, b"", last_cc + 1
                 return decrypt_user_response(assembled)
 
-            # Načti všechny uživatele
             users: list[dict] = []
             offset = 0
             while True:
@@ -871,7 +832,7 @@ class SoloMiniClient:
         return result is not None
 
     async def set_user_name(self, uid: int, name: str) -> bool:
-        name_bytes = name.encode("utf-8")
+        name_bytes = name.encode("utf-8")[:4]
         plaintext = bytes([0x04, uid & 0xFF, (uid >> 8) & 0xFF]) + name_bytes
         result = await self._do_user_cmd(plaintext)
         return result is not None

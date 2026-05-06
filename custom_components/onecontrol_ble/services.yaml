@@ -53,7 +53,7 @@ set_user_name:
           mode: box
     name:
       name: Name
-      description: New name for the user
+      description: "New name for the user (max 4 characters due to BLE MTU limit)"
       required: true
       selector:
         text:
