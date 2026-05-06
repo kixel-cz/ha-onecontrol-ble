@@ -114,9 +114,14 @@ async def async_setup_entry(
         f"{entry.entry_id}_coordinator"
     ]
 
+    users_coordinator: DataUpdateCoordinator[list] = hass.data[DOMAIN][
+        f"{entry.entry_id}_users_coordinator"
+    ]
+
     entities: list[SensorEntity] = [SoloMiniBatterySensor(coordinator, client, entry)]
     for description in SENSOR_DESCRIPTIONS:
         entities.append(SoloMiniInfoSensor(coordinator, entry, description))
+    entities.append(SoloMiniUsersSensor(users_coordinator, entry))
 
     async_add_entities(entities)
 
@@ -202,3 +207,48 @@ class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]
         if self.entity_description.key == "version" and value is not None:
             return f"1.{value}"
         return value
+
+
+class SoloMiniUsersSensor(CoordinatorEntity[DataUpdateCoordinator[list]], SensorEntity):
+    _attr_has_entity_name = True
+    _attr_name = "Users"
+    _attr_icon = "mdi:account-multiple"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[list],
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"onecontrol_{entry.data['address'].replace(':', '').lower()}_users"
+        self._attr_device_info = dr.DeviceInfo(
+            identifiers={(DOMAIN, entry.data["address"])},
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        if self.coordinator.data is None:
+            return None
+        return len(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if not self.coordinator.data:
+            return {}
+        return {
+            "users": [
+                {
+                    "uid": u.get("uid"),
+                    "name": u.get("name"),
+                    "type": "admin" if u.get("type") == 1 else "user",
+                    "actions": u.get("actions_mask"),
+                    "days": u.get("day_mask"),
+                    "start_date": u.get("start_date"),
+                    "duration_h": u.get("duration_h"),
+                }
+                for u in self.coordinator.data
+            ]
+        }

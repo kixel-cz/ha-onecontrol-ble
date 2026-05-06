@@ -99,6 +99,49 @@
       "device_name": {
         "name": "Název zařízení"
       }
+    },
+    "switch": {
+      "dst": {
+        "name": "Letní čas"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Baterie"
+      },
+      "battery_raw": {
+        "name": "Baterie (raw)"
+      },
+      "name": {
+        "name": "Název zařízení"
+      },
+      "version": {
+        "name": "Verze firmware"
+      },
+      "production": {
+        "name": "Datum výroby"
+      },
+      "serial": {
+        "name": "Sériové číslo"
+      },
+      "max_actions": {
+        "name": "Max akcí"
+      },
+      "max_users": {
+        "name": "Max uživatelů"
+      },
+      "cloned_mask": {
+        "name": "Maska klonů"
+      },
+      "dst": {
+        "name": "Letní čas"
+      },
+      "sys_options": {
+        "name": "Systémové volby"
+      },
+      "users": {
+        "name": "Uživatelé"
+      }
     }
   }
 }

@@ -523,3 +523,298 @@ class SoloMiniClient:
         except Exception as e:
             _LOGGER.error("_do_settings failed: %s", e)
             return None
+
+    async def get_users_count(self) -> int | None:
+        result = await self._do_user_cmd(bytes([0x02]))
+        if result and len(result) >= 2:
+            return int.from_bytes(result[:2], "little")
+        return None
+
+    async def get_user(self, uid: int) -> dict | None:
+        result = await self._do_user_cmd(bytes([0x01, uid & 0xFF, (uid >> 8) & 0xFF]))
+        if result:
+            return self._parse_user(result)
+        return None
+
+    async def list_users(self, offset: int = 0) -> list[dict]:
+        result = await self._do_user_cmd(bytes([0x03, offset & 0xFF, (offset >> 8) & 0xFF]))
+        if not result:
+            return []
+
+        users = []
+        pos = 0
+        while pos < len(result):
+            uid = int.from_bytes(result[pos : pos + 2], "little")
+            if uid == 0xFFFF:
+                break
+            users.append({"uid": uid})
+            pos += 2
+        return users
+
+    def _parse_user(self, bArr: bytes) -> dict:
+        if len(bArr) < 22:
+            return {}
+        return {
+            "uid": int.from_bytes(bArr[0:2], "little"),
+            "type": bArr[2],
+            "id_token": int.from_bytes(bArr[3:5], "little"),
+            "options_mask": bArr[5],
+            "actions_mask": bArr[6],
+            "day_mask": bArr[7],
+            "start_date": int.from_bytes(bArr[16:20], "little"),
+            "duration_hours": int.from_bytes(bArr[20:22], "little"),
+            "name": bArr[22:-1].decode("utf-8", "ignore") if len(bArr) > 23 else "",
+        }
+
+    async def _do_user_cmd(self, plaintext: bytes) -> bytes | None:
+        import struct as _struct
+
+        try:
+            random_a = os.urandom(8)
+            q: asyncio.Queue[bytes] = asyncio.Queue()
+
+            client = await self._get_client()
+            async with client:
+                await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
+                await asyncio.sleep(0.3)
+                while not q.empty():
+                    q.get_nowait()
+
+                # StartSession
+                await client.write_gatt_char(
+                    TX_CHAR_UUID,
+                    bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
+                    response=True,
+                )
+                resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+                our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
+
+                # Probe
+                probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
+                await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
+                r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+                if is_nack(r):
+                    return None
+                resp_cc = extract_response_cc(r)
+                if resp_cc is None:
+                    return None
+
+                # User cmd (cmd=0x07)
+                from Crypto.Cipher import AES as _AES
+
+                from .protocol import CCM_TAG_LEN, build_tlv
+
+                cc = resp_cc + 1
+                nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
+                aad = _struct.pack("<H", self.security.user_id) + _struct.pack("<I", cc) + b"\x07"
+                cipher = _AES.new(
+                    self.security.session_key,
+                    _AES.MODE_CCM,
+                    nonce=nonce,
+                    mac_len=CCM_TAG_LEN,
+                )
+                cipher.update(aad)
+                ct, tag = cipher.encrypt_and_digest(plaintext)
+                payload = (
+                    b"\x07"
+                    + ct
+                    + tag
+                    + _struct.pack("<H", self.security.user_id)
+                    + _struct.pack("<I", cc)
+                )
+                pkt = build_tlv(payload)
+                await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
+
+                frags: list[bytes] = []
+                for _ in range(5):
+                    try:
+                        rx = await asyncio.wait_for(q.get(), timeout=2.0)
+                        frags.append(rx)
+                        if (rx[0] >> 4) == 4:
+                            total = rx[2]
+                            if len(frags) >= total:
+                                break
+                        else:
+                            break
+                    except TimeoutError:
+                        break
+
+                from .protocol import assemble_fragments as af
+
+                assembled = af(frags)
+                if not assembled:
+                    return None
+
+                d = assembled
+                cc_r = (
+                    (d[-4] & 0xFF)
+                    | ((d[-3] & 0xFF) << 8)
+                    | ((d[-2] & 0xFF) << 16)
+                    | ((d[-1] & 0xFF) << 24)
+                )
+                b_arr = assembled[1:-6]
+                cmd = assembled[0]
+                nonce2 = self.security.session_id[:8] + _struct.pack("<I", cc_r)
+                aad2 = _struct.pack("<H", 0) + _struct.pack("<I", cc_r) + bytes([cmd])
+                try:
+                    c2 = _AES.new(
+                        self.security.session_key,
+                        _AES.MODE_CCM,
+                        nonce=nonce2,
+                        mac_len=CCM_TAG_LEN,
+                    )
+                    c2.update(aad2)
+                    pt = c2.decrypt_and_verify(b_arr[:-CCM_TAG_LEN], b_arr[-CCM_TAG_LEN:])
+                    if pt[0] != 0:  # response code
+                        return None
+                    return pt[1:]
+                except Exception:
+                    return None
+
+        except Exception as e:
+            _LOGGER.error("_do_user_cmd failed: %s", e)
+            return None
+
+    async def get_users(self) -> list[dict]:
+        try:
+            return await self._do_get_users()
+        except Exception as e:
+            _LOGGER.error("get_users failed: %s", e)
+            return []
+
+    async def _do_get_users(self) -> list[dict]:
+        import struct as _struct
+
+        from Crypto.Cipher import AES as _AES
+
+        from .protocol import CCM_TAG_LEN, assemble_fragments, build_tlv
+
+        def build_user_cmd(last_cc: int, plaintext: bytes) -> bytes:
+            cc = last_cc + 1
+            nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
+            aad = _struct.pack("<H", self.security.user_id) + _struct.pack("<I", cc) + b"\x07"
+            cipher = _AES.new(
+                self.security.session_key,
+                _AES.MODE_CCM,
+                nonce=nonce,
+                mac_len=CCM_TAG_LEN,
+            )
+            cipher.update(aad)
+            ct, tag = cipher.encrypt_and_digest(plaintext)
+            payload = (
+                b"\x07"
+                + ct
+                + tag
+                + _struct.pack("<H", self.security.user_id)
+                + _struct.pack("<I", cc)
+            )
+            return build_tlv(payload)
+
+        def decrypt_user_response(assembled: bytes) -> tuple[int, bytes, int]:
+            d = assembled
+            cc = (
+                (d[-4] & 0xFF)
+                | ((d[-3] & 0xFF) << 8)
+                | ((d[-2] & 0xFF) << 16)
+                | ((d[-1] & 0xFF) << 24)
+            )
+            b_arr = assembled[1:-6]
+            cmd = assembled[0]
+            nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
+            aad = _struct.pack("<H", 0) + _struct.pack("<I", cc) + bytes([cmd])
+            cipher = _AES.new(
+                self.security.session_key,
+                _AES.MODE_CCM,
+                nonce=nonce,
+                mac_len=CCM_TAG_LEN,
+            )
+            cipher.update(aad)
+            pt = cipher.decrypt_and_verify(b_arr[:-CCM_TAG_LEN], b_arr[-CCM_TAG_LEN:])
+            return pt[0], pt[1:], cc
+
+        def parse_user(bArr: bytes) -> dict:
+            if len(bArr) < 22:
+                return {}
+            import datetime
+
+            start = int.from_bytes(bArr[16:20], "little")
+            return {
+                "uid": int.from_bytes(bArr[0:2], "little"),
+                "type": bArr[2],
+                "options_mask": bArr[5],
+                "actions_mask": bArr[6],
+                "day_mask": bArr[7],
+                "start_date": datetime.datetime.fromtimestamp(start, tz=datetime.UTC).strftime(
+                    "%Y-%m-%d"
+                )
+                if start
+                else None,
+                "duration_h": int.from_bytes(bArr[20:22], "little"),
+                "name": bArr[22:].rstrip(b"\x00").decode("utf-8", "ignore"),
+            }
+
+        random_a = os.urandom(8)
+        q: asyncio.Queue[bytes] = asyncio.Queue()
+
+        client = await self._get_client()
+        async with client:
+            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
+            await asyncio.sleep(0.3)
+            while not q.empty():
+                q.get_nowait()
+
+            # StartSession
+            await client.write_gatt_char(
+                TX_CHAR_UUID,
+                bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
+                response=True,
+            )
+            resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
+
+            # Probe
+            probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
+            await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
+            r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+            if is_nack(r):
+                return []
+            resp_cc = extract_response_cc(r)
+            if resp_cc is None:
+                return []
+
+            async def send_and_recv(last_cc: int, plaintext: bytes) -> tuple[int, bytes, int]:
+                pkt = build_user_cmd(last_cc, plaintext)
+                await client.write_gatt_char(TX_CHAR_UUID, pkt, response=True)
+                frags: list[bytes] = []
+                for _ in range(5):
+                    try:
+                        rx = await asyncio.wait_for(q.get(), timeout=2.0)
+                        frags.append(rx)
+                        if (rx[0] >> 4) == 4:
+                            if len(frags) >= rx[2]:
+                                break
+                        else:
+                            break
+                    except TimeoutError:
+                        break
+                assembled = assemble_fragments(frags)
+                if not assembled:
+                    return -1, b"", last_cc + 1
+                return decrypt_user_response(assembled)
+
+            # Načti všechny uživatele
+            users: list[dict] = []
+            offset = 0
+            while True:
+                rc, payload, resp_cc = await send_and_recv(
+                    resp_cc, bytes([0x03, offset & 0xFF, (offset >> 8) & 0xFF])
+                )
+                if rc != 0 or not payload:
+                    break
+                user = parse_user(payload)
+                if user:
+                    users.append(user)
+                offset += 1
+
+            _LOGGER.debug("Loaded %d users", len(users))
+            return users

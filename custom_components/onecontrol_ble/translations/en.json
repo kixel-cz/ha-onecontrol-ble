@@ -99,6 +99,49 @@
       "device_name": {
         "name": "Device name"
       }
+    },
+    "switch": {
+      "dst": {
+        "name": "Daylight saving time"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "battery_raw": {
+        "name": "Battery Raw"
+      },
+      "name": {
+        "name": "Device Name"
+      },
+      "version": {
+        "name": "Firmware Version"
+      },
+      "production": {
+        "name": "Production Date"
+      },
+      "serial": {
+        "name": "Serial Number"
+      },
+      "max_actions": {
+        "name": "Max Actions"
+      },
+      "max_users": {
+        "name": "Max Users"
+      },
+      "cloned_mask": {
+        "name": "Cloned Mask"
+      },
+      "dst": {
+        "name": "DST Enabled"
+      },
+      "sys_options": {
+        "name": "System Options"
+      },
+      "users": {
+        "name": "Users"
+      }
     }
   }
 }

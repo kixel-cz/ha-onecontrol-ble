@@ -58,6 +58,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = client
     hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = coordinator
 
+    from datetime import timedelta
+
+    users_coordinator: DataUpdateCoordinator[list] = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name=f"onecontrol_{address}_users",
+        update_method=client.get_users,
+        update_interval=timedelta(hours=6),
+    )
+    hass.data[DOMAIN][f"{entry.entry_id}_users_coordinator"] = users_coordinator
+
     @callback
     def _async_update_ble(
         service_info: BluetoothServiceInfoBleak,
@@ -78,6 +89,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     hass.async_create_task(coordinator.async_request_refresh())
+    hass.async_create_task(users_coordinator.async_request_refresh())
 
     return True
 
