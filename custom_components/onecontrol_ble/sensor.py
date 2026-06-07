@@ -23,19 +23,18 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .ble_client import SoloMiniClient
+from .config_flow import DEFAULT_BATTERY_HIGH_MV, DEFAULT_BATTERY_LOW_MV
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
-BATTERY_HIGH = 3200  # TODO
-BATTERY_LOW = 1800  # TODO
 
 
-def raw_to_percent(raw: int) -> int:
-    if raw >= BATTERY_HIGH:
+def raw_to_percent(raw: int, low_mv: int = DEFAULT_BATTERY_LOW_MV, high_mv: int = DEFAULT_BATTERY_HIGH_MV) -> int:
+    if raw >= high_mv:
         return 100
-    if raw <= BATTERY_LOW:
+    if raw <= low_mv:
         return 0
-    return int((raw - BATTERY_LOW) / (BATTERY_HIGH - BATTERY_LOW) * 100)
+    return int((raw - low_mv) / (high_mv - low_mv) * 100)
 
 
 SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
@@ -171,7 +170,12 @@ class SoloMiniBatterySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, An
         raw = self.coordinator.data.get("battery_raw")
         if raw is None:
             return None
-        return raw_to_percent(raw)
+        opts = self._entry.options
+        return raw_to_percent(
+            raw,
+            low_mv=opts.get("battery_low_mv", DEFAULT_BATTERY_LOW_MV),
+            high_mv=opts.get("battery_high_mv", DEFAULT_BATTERY_HIGH_MV),
+        )
 
 
 class SoloMiniInfoSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):

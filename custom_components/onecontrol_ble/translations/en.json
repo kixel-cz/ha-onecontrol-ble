@@ -1,5 +1,21 @@
 {
   "title": "1Control SoloMini BLE",
+  "options": {
+    "step": {
+      "init": {
+        "title": "Battery calibration",
+        "description": "Set the raw millivolt thresholds for the battery sensor. The device uses 2× 1.5V alkaline cells (3V nominal). Adjust the low threshold after checking what raw value your device reports when nearly empty.",
+        "data": {
+          "battery_high_mv": "Full battery (mV)",
+          "battery_low_mv": "Empty battery (mV)"
+        },
+        "data_description": {
+          "battery_high_mv": "Raw mV value reported by the device when batteries are fresh (default 3200 mV).",
+          "battery_low_mv": "Raw mV value reported by the device when batteries are nearly empty (default 1800 mV). Lower this value if the sensor drops to 0% too early."
+        }
+      }
+    }
+  },
   "config": {
     "step": {
       "mitm": {

@@ -18,14 +18,50 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "onecontrol_ble"
 SOLOMINI_SERVICE_UUID = "d973f2e0-b19e-11e2-9e96-0800200c9a66"
 
+# 2x 1.5V alkaline: fresh ~3.2V, dead ~1.8V (0.9V per cell)
+DEFAULT_BATTERY_HIGH_MV = 3200
+DEFAULT_BATTERY_LOW_MV = 1800
+
 
 def _is_hex(s: str, length: int) -> bool:
     s = s.strip().lower().replace(" ", "")
     return len(s) == length and all(c in "0123456789abcdef" for c in s)
 
 
+class OneControlOptionsFlow(config_entries.OptionsFlow):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        current = self._entry.options
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    "battery_high_mv",
+                    default=current.get("battery_high_mv", DEFAULT_BATTERY_HIGH_MV),
+                ): vol.All(int, vol.Range(min=2000, max=4000)),
+                vol.Optional(
+                    "battery_low_mv",
+                    default=current.get("battery_low_mv", DEFAULT_BATTERY_LOW_MV),
+                ): vol.All(int, vol.Range(min=1000, max=3000)),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
+
+
 class OneControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> OneControlOptionsFlow:
+        return OneControlOptionsFlow(config_entry)
 
     def __init__(self) -> None:
         self._parsed: dict = {}
