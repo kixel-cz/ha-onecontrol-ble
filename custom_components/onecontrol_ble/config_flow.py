@@ -21,6 +21,7 @@ SOLOMINI_SERVICE_UUID = "d973f2e0-b19e-11e2-9e96-0800200c9a66"
 # 2x 1.5V alkaline: fresh ~3.2V, dead ~1.8V (0.9V per cell)
 DEFAULT_BATTERY_HIGH_MV = 3200
 DEFAULT_BATTERY_LOW_MV = 1800
+DEFAULT_PERSISTENT_CONNECTION = True
 
 
 def _is_hex(s: str, length: int) -> bool:
@@ -41,6 +42,10 @@ class OneControlOptionsFlow(config_entries.OptionsFlow):
         current = self._entry.options
         schema = vol.Schema(
             {
+                vol.Optional(
+                    "persistent_connection",
+                    default=current.get("persistent_connection", DEFAULT_PERSISTENT_CONNECTION),
+                ): bool,
                 vol.Optional(
                     "battery_high_mv",
                     default=current.get("battery_high_mv", DEFAULT_BATTERY_HIGH_MV),

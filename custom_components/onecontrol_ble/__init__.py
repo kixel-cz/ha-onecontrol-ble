@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .ble_client import SoloMiniClient
+from .config_flow import DEFAULT_PERSISTENT_CONNECTION
 from .protocol import SecurityData
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         security=sec,
         action=entry.data.get("action", 0),
         ble_device=ble_device,
+        persistent_connection=entry.options.get("persistent_connection", DEFAULT_PERSISTENT_CONNECTION),
     )
 
     async def _fetch_all() -> dict:
@@ -91,6 +93,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             BluetoothScanningMode.ACTIVE,
         )
     )
+
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -144,6 +148,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "set_user_name", handle_set_user_name)
 
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the entry when options change so the client picks up new settings."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

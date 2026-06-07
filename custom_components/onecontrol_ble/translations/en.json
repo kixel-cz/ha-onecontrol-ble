@@ -6,10 +6,12 @@
         "title": "Battery calibration",
         "description": "Set the raw millivolt thresholds for the battery sensor. The device uses 2× 1.5V alkaline cells (3V nominal). Adjust the low threshold after checking what raw value your device reports when nearly empty.",
         "data": {
+          "persistent_connection": "Keep BLE connection open",
           "battery_high_mv": "Full battery (mV)",
           "battery_low_mv": "Empty battery (mV)"
         },
         "data_description": {
+          "persistent_connection": "Keep the BLE connection open between commands for faster response. Disable if you suspect it affects device battery life.",
           "battery_high_mv": "Raw mV value reported by the device when batteries are fresh (default 3200 mV).",
           "battery_low_mv": "Raw mV value reported by the device when batteries are nearly empty (default 1800 mV). Lower this value if the sensor drops to 0% too early."
         }

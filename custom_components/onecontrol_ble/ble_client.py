@@ -37,11 +37,13 @@ class SoloMiniClient:
         security: SecurityData,
         action: int = 0,
         ble_device: BLEDevice | None = None,
+        persistent_connection: bool = True,
     ):
         self.address = address
         self.security = security
         self.action = action
         self.ble_device = ble_device
+        self.persistent_connection = persistent_connection
         self._lock = asyncio.Lock()
         self._conn: BleakClientWithServiceCache | BleakClient | None = None
         self._notify_queue: asyncio.Queue[bytes] = asyncio.Queue()
@@ -92,6 +94,15 @@ class SoloMiniClient:
         self._conn = client
         _LOGGER.debug("Connected to %s", self.address)
         return client
+
+    async def _release(self) -> None:
+        """Disconnect after a command when not in persistent mode."""
+        if not self.persistent_connection and self._conn is not None:
+            try:
+                await self._conn.disconnect()
+            except Exception:
+                pass
+            self._conn = None
 
     def _drain_queue(self) -> None:
         while not self._notify_queue.empty():
@@ -194,6 +205,7 @@ class SoloMiniClient:
 
         self.security.last_cc = new_cc
         _LOGGER.info("Gate opened! last_cc=%d battery_raw=%s", new_cc, self.security.battery_raw)
+        await self._release()
         return True
 
     async def _collect_response(self, last_cc: int, first: bytes | None = None) -> int:
@@ -287,7 +299,9 @@ class SoloMiniClient:
         if info:
             self.security.battery_raw = info["battery_raw"]
             _LOGGER.debug("SystemInfo: %s", info)
+            await self._release()
             return info
+        await self._release()
         return {}
 
     async def clone_remote(self, action: int = 0) -> int | None:
@@ -332,8 +346,11 @@ class SoloMiniClient:
             _LOGGER.debug("_do_transmit RX: %s", ack.hex())
 
             if is_nack(ack):
+                await self._release()
                 return None
-            return ack[3] & 0xFF if len(ack) >= 8 else 0
+            result = ack[3] & 0xFF if len(ack) >= 8 else 0
+            await self._release()
+            return result
 
         except Exception as e:
             _LOGGER.error("_do_transmit failed: %s", e)
@@ -452,8 +469,11 @@ class SoloMiniClient:
             ack = await asyncio.wait_for(self._notify_queue.get(), timeout=RESPONSE_TIMEOUT)
             _LOGGER.debug("_do_settings RX: %s", ack.hex())
             if is_nack(ack):
+                await self._release()
                 return None
-            return ack[3] & 0xFF if len(ack) >= 4 else 0
+            result = ack[3] & 0xFF if len(ack) >= 4 else 0
+            await self._release()
+            return result
 
         except Exception as e:
             _LOGGER.error("_do_settings failed: %s", e)
@@ -544,7 +564,9 @@ class SoloMiniClient:
             c2.update(aad2)
             pt = c2.decrypt_and_verify(b_arr[:-CCM_TAG_LEN], b_arr[-CCM_TAG_LEN:])
             if pt[0] != 0:
+                await self._release()
                 return None
+            await self._release()
             return pt[1:]
 
         except Exception as e:
@@ -656,6 +678,7 @@ class SoloMiniClient:
             offset += 1
 
         _LOGGER.debug("Loaded %d users", len(users))
+        await self._release()
         return users
 
     async def add_user(self) -> dict | None:

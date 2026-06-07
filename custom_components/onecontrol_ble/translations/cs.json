@@ -6,10 +6,12 @@
         "title": "Kalibrace baterie",
         "description": "Nastavte prahové hodnoty (v mV) pro senzor baterie. Zařízení používá 2× 1,5V alkalické baterie (nominálně 3V). Dolní práh upravte podle toho, jakou raw hodnotu hlásí zařízení při téměř vybité baterii.",
         "data": {
+          "persistent_connection": "Udržovat BLE spojení otevřené",
           "battery_high_mv": "Plná baterie (mV)",
           "battery_low_mv": "Vybitá baterie (mV)"
         },
         "data_description": {
+          "persistent_connection": "Udržuje BLE spojení otevřené mezi příkazy pro rychlejší odezvu. Vypněte, pokud máte podezření, že to zkracuje životnost baterie zařízení.",
           "battery_high_mv": "Raw hodnota v mV při čerstvých bateriích (výchozí 3200 mV).",
           "battery_low_mv": "Raw hodnota v mV při téměř vybité baterii (výchozí 1800 mV). Snižte, pokud senzor klesne na 0 % příliš brzy."
         }
