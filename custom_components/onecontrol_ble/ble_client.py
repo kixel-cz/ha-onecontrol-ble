@@ -47,6 +47,7 @@ class SoloMiniClient:
         self._lock = asyncio.Lock()
         self._conn: BleakClientWithServiceCache | BleakClient | None = None
         self._notify_queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._last_disconnect: float = 0.0
 
     def set_ble_device(self, ble_device: BLEDevice) -> None:
         self.ble_device = ble_device
@@ -54,6 +55,7 @@ class SoloMiniClient:
     def _on_disconnect(self, _client: BleakClient) -> None:
         _LOGGER.debug("BLE disconnected from %s", self.address)
         self._conn = None
+        self._last_disconnect = asyncio.get_event_loop().time()
         while not self._notify_queue.empty():
             self._notify_queue.get_nowait()
 
@@ -61,6 +63,11 @@ class SoloMiniClient:
         """Return the persistent BLE connection, establishing it if needed."""
         if self._conn is not None and self._conn.is_connected:
             return self._conn
+
+        # Brief cooldown so the device is ready after self-disconnecting
+        since = asyncio.get_event_loop().time() - self._last_disconnect
+        if 0 < since < 1.5:
+            await asyncio.sleep(1.5 - since)
 
         _LOGGER.debug("Connecting to %s", self.address)
         if self.ble_device is not None:
@@ -139,19 +146,23 @@ class SoloMiniClient:
         return await self._probe(client, our_sk, our_sid)
 
     async def open_gate(self) -> bool:
-        if self._lock.locked():
-            _LOGGER.warning("Already in progress")
+        try:
+            await asyncio.wait_for(self._lock.acquire(), timeout=20.0)
+        except asyncio.TimeoutError:
+            _LOGGER.warning("open_gate timed out waiting for lock")
             return False
-        async with self._lock:
+        try:
             for attempt in range(3):
                 try:
                     return await self._do_open()
                 except Exception as e:
                     _LOGGER.warning("Attempt %d failed: %s", attempt + 1, e)
-                    self._conn = None  # force reconnect on next attempt
+                    self._conn = None
                     if attempt < 2:
                         await asyncio.sleep(2)
             return False
+        finally:
+            self._lock.release()
 
     async def _do_open(self) -> bool:
         client = await self._ensure_connected()
@@ -240,18 +251,15 @@ class SoloMiniClient:
 
     async def get_system_info(self) -> dict[str, Any]:
         for attempt in range(3):
-            if self._lock.locked():
-                _LOGGER.debug("Lock busy, waiting... attempt %d", attempt + 1)
-                await asyncio.sleep(5)
-                continue
             async with self._lock:
                 try:
                     return await self._do_get_system_info()
                 except Exception as e:
                     _LOGGER.warning("get_system_info failed: %s", e)
                     self._conn = None
-                    if attempt < 2:
-                        await asyncio.sleep(10)
+            # Release lock during retry sleep so open_gate can run
+            if attempt < 2:
+                await asyncio.sleep(10)
         return {}
 
     async def _do_get_system_info(self) -> dict[str, Any]:
