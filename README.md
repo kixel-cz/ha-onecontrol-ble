@@ -43,6 +43,23 @@ Or manually:
 4. Click **Add** → find **1Control SoloMini BLE** → **Install**
 5. Restart Home Assistant
 
+### Testing a development branch
+
+If you want to test a pre-release branch before it's merged, the easiest way is via SSH:
+
+1. Install the **SSH & Terminal** add-on in HA
+2. Connect and run:
+
+```bash
+cd /config/custom_components
+rm -rf onecontrol_ble
+git clone --branch improvements --single-branch \
+  https://github.com/kixel-cz/ha-onecontrol-ble.git /tmp/oc
+mv /tmp/oc/custom_components/onecontrol_ble .
+```
+
+3. Restart Home Assistant
+
 ---
 
 ## Getting security keys
@@ -83,6 +100,20 @@ If your device is in factory reset state (no existing pairing), the integration 
 
 - In HA: **Settings → System → Bluetooth** → list of visible devices
 - Using a BLE scanner app (e.g. nRF Connect) — search for service UUID `D973F2E0-B19E-11E2-9E96-0800200C9A66`
+
+---
+
+## Options
+
+After setup, you can adjust the integration options via **Settings → Devices & Services → 1Control SoloMini BLE → Configure**:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| Keep BLE connection open | On | Keeps the Bluetooth connection active between commands for faster response (~200 ms vs ~1–2 s). Disable if you suspect it affects device battery life. |
+| Full battery (mV) | 3200 | Raw millivolt reading at full charge. The device uses 2× 1.5V alkaline batteries. |
+| Empty battery (mV) | 1800 | Raw millivolt reading at empty. Lower this value if the battery sensor drops to 0% too early. |
+
+Changes take effect immediately after saving (the integration reloads automatically).
 
 ---
 
@@ -132,18 +163,16 @@ Users stored on the device can be viewed in the **Users** sensor attributes. Use
 | Service | Description |
 |---------|-------------|
 | `onecontrol_ble.add_user` | Add a new user — returns uid and LTK in the HA log |
-| `onecontrol_ble.delete_user` | Delete a user by uid (requires server token — may not work without 1Control cloud) |
+| `onecontrol_ble.delete_user` | Delete a user by uid |
 | `onecontrol_ble.set_user_name` | Rename a user |
 
 > **Note:** When adding a user, the new user's LTK is logged as a WARNING in the HA log. Save it — it cannot be retrieved again.
 
-> **Limitation:** User type and access restrictions (days, time slots) are set via a server-signed token which cannot be generated locally. Users added via HA will have default permissions as assigned by the device.
+> **Limitation:** User access restrictions (days, time slots) require a server-signed token which cannot be generated locally. Users added via HA will have default permissions as assigned by the device.
 
 User types:
 - **type 1** — admin (permanent access, no restrictions)
 - **type 0** — standard user (time-limited access with day/time restrictions)
-
-Changing user type is not supported by the BLE protocol.
 
 ---
 
@@ -171,9 +200,8 @@ automation:
 |---|---|
 | Device not visible in HA | Check HA Bluetooth adapter, restart integration |
 | Gate doesn't open | Verify the security keys — they must match the paired device |
-| Integration disconnects | Normal — SoloMini is wake-on-demand over BLE |
 | Wrong action number | Try action number 1 instead of 0 in integration settings |
-| Battery shows unknown | Trigger a gate open first — battery is read from the device greeting |
+| Battery shows unknown | Trigger a gate open first — battery is read from the device response |
 | Sensors show unknown after restart | Wait for coordinator refresh (up to 1 hour) or trigger manually via Developer Tools |
 
 ---
@@ -195,11 +223,11 @@ Reverse-engineered from `it.onecontrol.apk` v2.6.4 and iOS btsnoop captures.
 ### Communication flow
 
 ```
-1. SESSION (every connection):
+1. SESSION (on connect):
    HA → device:  [00][0A][90][02][randomA_8B]        (StartSession)
    device → HA:  [00][0A][90][00][randomB_8B]
-   our_sessionID  = SHA256(randomA || randomB)[0:8]
-   our_sessionKey = SHA256(LTK || our_sessionID)[0:16]
+   sessionID  = SHA256(randomA || randomB)[0:8]
+   sessionKey = SHA256(LTK || sessionID)[0:16]
 
 2. PROBE (discover current device CC counter):
    HA → device:  [00][0F][01][AES-CCM(our_sk,cc=1)][uid_2B][CC_4B]
@@ -212,53 +240,12 @@ Reverse-engineered from `it.onecontrol.apk` v2.6.4 and iOS btsnoop captures.
                plaintext=[0x01, action], mac_len=6)
    packet: [00][0F][01][CCM_out_8B][userID_2B][CC+1_4B]
 
-4. TRANSMIT commands (cmd=0x01, different plaintext):
-   Open:            [0x01, action]
-   CloneRemote:     [0x02, action]
-   StartScanner:    [0x0C, action]
-   ConfirmScanner:  [0x0D, action]
-   CompleteScanner: [0x0E, action]
-   UndoScanner:     [0x0F, action]
-
-5. SETTINGS commands (cmd=0x10):
-   SetDate:         [0x01, epoch_4B_LE]
-   SetDeviceName:   [0x02, name_bytes] (max 4 chars, BLE MTU limit)
-   SetDaylightSaving: [0x03, 0/1]
-
-6. USER commands (cmd=0x07):
-   GetUser:         [0x01, uid_lo, uid_hi]
-   GetUsersCount:   [0x02]
-   ListUsers:       [0x03, offset_lo, offset_hi]
-   SetUserName:     [0x04, uid_lo, uid_hi, name_bytes]
-   UpdateUserToken: [0x05, token_bytes]
-   DeleteUser:      [0x06, uid_lo, uid_hi]
-   AddUser:         [0x0C] → returns uid_2B + ltk_16B
-
-7. GET SYSTEM INFO (cmd=0x14):
-   Request:  [0x14][AES-CCM([0xFF])][uid_2B][CC_4B]
-   Response: fragmented packets (type 4), assembled and decrypted
-   Contains: serial, battery_raw, firmware version, device name, etc.
-
-8. PAIRING (factory reset device):
+4. PAIRING (factory reset device only):
    HA → device:  [00][42][90][01][phone_pubkey_64B]
    device → HA:  [00][42][90][00][device_pubkey_64B]
    LTK = SHA256(ECDH(phone_privkey, device_pubkey))[0:16]
    curve: secp256r1
 ```
-
-### Key APK source files
-
-| File | Description |
-|---|---|
-| `w2.java` | StartSession — session key derivation |
-| `x2.java` | ECDH pairing |
-| `d9/e.java` | AES-CCM packet builder |
-| `d9/j.java` | SHA256 KDF, ECDH helpers |
-| `request/solo/TransmitRequest.java` | Open/Clone/Scanner commands |
-| `request/solo/GetSystemInfoRequest.java` | System info including battery |
-| `request/StartPairingRequest.java` | Pairing packet format |
-| `request/AddUserRequest.java` | User management |
-| `request/SetDeviceNameRequest.java` | Device settings |
 
 </details>
 
