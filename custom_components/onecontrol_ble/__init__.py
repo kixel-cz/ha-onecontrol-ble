@@ -74,7 +74,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = client
     hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = coordinator
-    hass.data[DOMAIN][f"{entry.entry_id}_users_coordinator"] = coordinator
 
     @callback
     def _async_update_ble(

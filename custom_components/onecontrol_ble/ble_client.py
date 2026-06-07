@@ -48,6 +48,7 @@ class SoloMiniClient:
         self.ble_device = ble_device
 
     async def _get_client(self) -> BleakClient:
+        """Return a connected BleakClient, preferring cached BLE device."""
         if self.ble_device is not None:
             return await establish_connection(
                 BleakClientWithServiceCache,
@@ -56,6 +57,40 @@ class SoloMiniClient:
                 max_attempts=3,
             )
         return BleakClient(self.address, timeout=CONNECT_TIMEOUT)
+
+    async def _start_session(
+        self, client: BleakClient, q: asyncio.Queue[bytes]
+    ) -> tuple[int, bytes] | None:
+        """Run StartSession + Probe; return (resp_cc, derived_sk) or None on failure."""
+        random_a = os.urandom(8)
+
+        try:
+            if hasattr(client, "_backend"):
+                client._backend._mtu_size = 247  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
+        await asyncio.sleep(0.3)
+        while not q.empty():
+            q.get_nowait()
+
+        await client.write_gatt_char(
+            TX_CHAR_UUID,
+            bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
+            response=True,
+        )
+        resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+        our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
+
+        probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
+        await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
+        r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
+        if is_nack(r):
+            return None
+        resp_cc = extract_response_cc(r)
+        if resp_cc is None:
+            return None
+        return resp_cc, our_sk
 
     async def open_gate(self) -> bool:
         if self._lock.locked():
@@ -72,39 +107,20 @@ class SoloMiniClient:
             return False
 
     async def _do_open(self) -> bool:
-        random_a = os.urandom(8)
         q: asyncio.Queue[bytes] = asyncio.Queue()
 
         client = await self._get_client()
         async with client:
             _LOGGER.debug("Connected to %s", self.address)
-            try:
-                if hasattr(client, "_backend"):
-                    client._backend._mtu_size = 247  # type: ignore[attr-defined]
-                    _LOGGER.debug("MTU set to 247")
-            except Exception:
-                pass
-            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
-            await asyncio.sleep(0.3)
-            while not q.empty():
-                q.get_nowait()
-
-            await client.write_gatt_char(
-                TX_CHAR_UUID,
-                bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
-                response=True,
-            )
-            resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-            _LOGGER.debug("Session: %s", resp.hex())
-            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
-
-            current_cc = self.security.last_cc
-            _LOGGER.debug("Trying with last_cc=%d", current_cc)
+            session = await self._start_session(client, q)
+            if session is None:
+                return False
+            resp_cc, _ = session
 
             pkt = build_open_command(
                 self.security.session_key,
                 self.security.session_id,
-                current_cc,
+                resp_cc,
                 self.security.user_id,
                 self.action,
             )
@@ -113,46 +129,9 @@ class SoloMiniClient:
             try:
                 r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
                 _LOGGER.debug("RX: %s", r.hex())
-
-                if is_nack(r):
-                    _LOGGER.debug("NACK on last_cc=%d, probing...", current_cc)
-                    probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
-                    await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
-                    r2 = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                    resp_cc = extract_response_cc(r2)
-                    if resp_cc is None:
-                        return False
-                    _LOGGER.debug("Probe CC=%d", resp_cc)
-                    pkt2 = build_open_command(
-                        self.security.session_key,
-                        self.security.session_id,
-                        resp_cc,
-                        self.security.user_id,
-                        self.action,
-                    )
-                    await client.write_gatt_char(TX_CHAR_UUID, pkt2, response=True)
-                    new_cc = await self._collect_response(q, resp_cc)
-
-                elif len(r) == 16:
-                    resp_cc = extract_response_cc(r)
-                    if resp_cc is not None and resp_cc != current_cc + 1:
-                        _LOGGER.debug("CC mismatch, retrying with CC=%d", resp_cc)
-                        pkt3 = build_open_command(
-                            self.security.session_key,
-                            self.security.session_id,
-                            resp_cc,
-                            self.security.user_id,
-                            self.action,
-                        )
-                        await client.write_gatt_char(TX_CHAR_UUID, pkt3, response=True)
-                        new_cc = await self._collect_response(q, resp_cc)
-                    else:
-                        new_cc = await self._collect_response(q, current_cc, first=r)
-                else:
-                    new_cc = current_cc + 1
-
+                new_cc = await self._collect_response(q, resp_cc, first=r)
             except TimeoutError:
-                new_cc = current_cc + 1
+                new_cc = resp_cc + 1
 
             self.security.last_cc = new_cc
             _LOGGER.info(
@@ -223,40 +202,14 @@ class SoloMiniClient:
             decrypt_system_info,
         )
 
-        random_a = os.urandom(8)
         q: asyncio.Queue[bytes] = asyncio.Queue()
 
         client = await self._get_client()
         async with client:
-            try:
-                if hasattr(client, "_backend"):
-                    client._backend._mtu_size = 247  # type: ignore[attr-defined]
-                    _LOGGER.debug("MTU set to 247")
-            except Exception:
-                pass
-            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
-            await asyncio.sleep(0.3)
-            while not q.empty():
-                q.get_nowait()
-
-            # StartSession
-            await client.write_gatt_char(
-                TX_CHAR_UUID,
-                bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
-                response=True,
-            )
-            resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
-
-            # Probe
-            probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
-            await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
-            r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-            if is_nack(r):
+            session = await self._start_session(client, q)
+            if session is None:
                 return {}
-            resp_cc = extract_response_cc(r)
-            if resp_cc is None:
-                return {}
+            resp_cc, _ = session
 
             # GetSystemInfo
             pkt = build_get_system_info(
@@ -306,51 +259,18 @@ class SoloMiniClient:
 
     async def _do_transmit(self, plaintext: bytes, timeout: float = 15.0) -> int | None:
         try:
-            random_a = os.urandom(8)
+            import struct as _struct
+
+            from .protocol import CCM_TAG_LEN, build_tlv
+
             q: asyncio.Queue[bytes] = asyncio.Queue()
 
             client = await self._get_client()
             async with client:
-                try:
-                    if hasattr(client, "_backend"):
-                        client._backend._mtu_size = 247  # type: ignore[attr-defined]
-                        _LOGGER.debug("MTU set to 247")
-                except Exception:
-                    pass
-                await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
-                await asyncio.sleep(0.3)
-                while not q.empty():
-                    q.get_nowait()
-
-                # StartSession
-                await client.write_gatt_char(
-                    TX_CHAR_UUID,
-                    bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
-                    response=True,
-                )
-                resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
-
-                # Probe
-                probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
-                await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
-                r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                if is_nack(r):
+                session = await self._start_session(client, q)
+                if session is None:
                     return None
-                resp_cc = extract_response_cc(r)
-                if resp_cc is None:
-                    return None
-
-                pkt = build_open_command(
-                    self.security.session_key,
-                    self.security.session_id,
-                    resp_cc,
-                    self.security.user_id,
-                    action=0,
-                )
-                import struct as _struct
-
-                from .protocol import CCM_TAG_LEN, build_tlv
+                resp_cc, _ = session
 
                 cc = resp_cc + 1
                 nonce = self.security.session_id[:8] + _struct.pack("<I", cc)
@@ -482,42 +402,16 @@ class SoloMiniClient:
         import struct as _struct
 
         try:
-            random_a = os.urandom(8)
+            from Crypto.Cipher import AES as _AES
+
             q: asyncio.Queue[bytes] = asyncio.Queue()
 
             client = await self._get_client()
             async with client:
-                try:
-                    if hasattr(client, "_backend"):
-                        client._backend._mtu_size = 247  # type: ignore[attr-defined]
-                        _LOGGER.debug("MTU set to 247")
-                except Exception:
-                    pass
-                await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
-                await asyncio.sleep(0.3)
-                while not q.empty():
-                    q.get_nowait()
-
-                # StartSession
-                await client.write_gatt_char(
-                    TX_CHAR_UUID,
-                    bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
-                    response=True,
-                )
-                resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
-
-                # Probe
-                probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
-                await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
-                r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                if is_nack(r):
+                session = await self._start_session(client, q)
+                if session is None:
                     return None
-                resp_cc = extract_response_cc(r)
-                if resp_cc is None:
-                    return None
-
-                from Crypto.Cipher import AES as _AES
+                resp_cc, _ = session
 
                 from .protocol import CCM_TAG_LEN, build_tlv
 
@@ -600,43 +494,18 @@ class SoloMiniClient:
         import struct as _struct
 
         try:
-            random_a = os.urandom(8)
+            from Crypto.Cipher import AES as _AES
+
             q: asyncio.Queue[bytes] = asyncio.Queue()
 
             client = await self._get_client()
             async with client:
-                try:
-                    if hasattr(client, "_backend"):
-                        client._backend._mtu_size = 247  # type: ignore[attr-defined]
-                        _LOGGER.debug("MTU set to 247")
-                except Exception:
-                    pass
-                await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
-                await asyncio.sleep(0.3)
-                while not q.empty():
-                    q.get_nowait()
-
-                # StartSession
-                await client.write_gatt_char(
-                    TX_CHAR_UUID,
-                    bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
-                    response=True,
-                )
-                resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
-
-                # Probe
-                probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
-                await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
-                r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-                if is_nack(r):
+                session = await self._start_session(client, q)
+                if session is None:
                     return None
-                resp_cc = extract_response_cc(r)
-                if resp_cc is None:
-                    return None
+                resp_cc, _ = session
 
                 # User cmd (cmd=0x07)
-                from Crypto.Cipher import AES as _AES
 
                 from .protocol import CCM_TAG_LEN, build_tlv
 
@@ -789,40 +658,14 @@ class SoloMiniClient:
                 "name": bArr[22:].rstrip(b"\x00").decode("utf-8", "ignore"),
             }
 
-        random_a = os.urandom(8)
         q: asyncio.Queue[bytes] = asyncio.Queue()
 
         client = await self._get_client()
         async with client:
-            try:
-                if hasattr(client, "_backend"):
-                    client._backend._mtu_size = 247  # type: ignore[attr-defined]
-                    _LOGGER.debug("MTU set to 247")
-            except Exception:
-                pass
-            await client.start_notify(RX_CHAR_UUID, lambda _, d: q.put_nowait(bytes(d)))
-            await asyncio.sleep(0.3)
-            while not q.empty():
-                q.get_nowait()
-
-            # StartSession
-            await client.write_gatt_char(
-                TX_CHAR_UUID,
-                bytes([0x00, 0x0A, 0x90, 0x02]) + random_a,
-                response=True,
-            )
-            resp = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-            our_sid, our_sk = derive_session(self.security.ltk, random_a, resp[4:12])
-
-            # Probe
-            probe = build_open_command(our_sk, our_sid, 0, self.security.user_id)
-            await client.write_gatt_char(TX_CHAR_UUID, probe, response=True)
-            r = await asyncio.wait_for(q.get(), timeout=RESPONSE_TIMEOUT)
-            if is_nack(r):
+            session = await self._start_session(client, q)
+            if session is None:
                 return []
-            resp_cc = extract_response_cc(r)
-            if resp_cc is None:
-                return []
+            resp_cc, _ = session
 
             async def send_and_recv(last_cc: int, plaintext: bytes) -> tuple[int, bytes, int]:
                 pkt = build_user_cmd(last_cc, plaintext)
