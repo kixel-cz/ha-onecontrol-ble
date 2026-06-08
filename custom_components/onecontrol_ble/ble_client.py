@@ -45,6 +45,7 @@ class SoloMiniClient:
         self.ble_device = ble_device
         self.persistent_connection = persistent_connection
         self._lock = asyncio.Lock()
+        self._conn_lock = asyncio.Lock()  # serialises _ensure_connected itself
         self._conn: BleakClientWithServiceCache | BleakClient | None = None
         self._notify_queue: asyncio.Queue[bytes] = asyncio.Queue()
         self._last_disconnect: float = 0.0
@@ -61,46 +62,52 @@ class SoloMiniClient:
 
     async def _ensure_connected(self) -> BleakClient:
         """Return the persistent BLE connection, establishing it if needed."""
+        # Fast path — already connected, no locking needed
         if self._conn is not None and self._conn.is_connected:
             return self._conn
 
-        # Brief cooldown so the device is ready after self-disconnecting
-        since = asyncio.get_event_loop().time() - self._last_disconnect
-        if 0 < since < 1.5:
-            await asyncio.sleep(1.5 - since)
+        # Slow path — serialise concurrent callers so only one connects
+        async with self._conn_lock:
+            if self._conn is not None and self._conn.is_connected:
+                return self._conn
 
-        _LOGGER.debug("Connecting to %s", self.address)
-        if self.ble_device is not None:
-            client = await establish_connection(
-                BleakClientWithServiceCache,
-                self.ble_device,
-                self.address,
-                disconnected_callback=self._on_disconnect,
-                max_attempts=3,
+            # Brief cooldown so the device is ready after self-disconnecting
+            since = asyncio.get_event_loop().time() - self._last_disconnect
+            if 0 < since < 1.5:
+                await asyncio.sleep(1.5 - since)
+
+            _LOGGER.debug("Connecting to %s", self.address)
+            if self.ble_device is not None:
+                client = await establish_connection(
+                    BleakClientWithServiceCache,
+                    self.ble_device,
+                    self.address,
+                    disconnected_callback=self._on_disconnect,
+                    max_attempts=3,
+                )
+            else:
+                client = BleakClient(
+                    self.address,
+                    timeout=CONNECT_TIMEOUT,
+                    disconnected_callback=self._on_disconnect,
+                )
+                await client.connect()
+
+            try:
+                if hasattr(client, "_backend"):
+                    client._backend._mtu_size = 247  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+            await client.start_notify(
+                RX_CHAR_UUID,
+                lambda _, d: self._notify_queue.put_nowait(bytes(d)),
             )
-        else:
-            client = BleakClient(
-                self.address,
-                timeout=CONNECT_TIMEOUT,
-                disconnected_callback=self._on_disconnect,
-            )
-            await client.connect()
+            await asyncio.sleep(0.1)
 
-        try:
-            if hasattr(client, "_backend"):
-                client._backend._mtu_size = 247  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
-        await client.start_notify(
-            RX_CHAR_UUID,
-            lambda _, d: self._notify_queue.put_nowait(bytes(d)),
-        )
-        await asyncio.sleep(0.1)
-
-        self._conn = client
-        _LOGGER.debug("Connected to %s", self.address)
-        return client
+            self._conn = client
+            _LOGGER.debug("Connected to %s", self.address)
+            return client
 
     async def _release(self) -> None:
         """Disconnect after a command when not in persistent mode."""
@@ -583,11 +590,16 @@ class SoloMiniClient:
             return None
 
     async def get_users(self) -> list[dict]:
-        try:
-            return await self._do_get_users()
-        except Exception as e:
-            _LOGGER.error("get_users failed: %s", e)
-            return []
+        for attempt in range(3):
+            async with self._lock:
+                try:
+                    return await self._do_get_users()
+                except Exception as e:
+                    _LOGGER.warning("get_users attempt %d failed: %s", attempt + 1, e)
+                    self._conn = None
+            if attempt < 2:
+                await asyncio.sleep(10)
+        return []
 
     async def _do_get_users(self) -> list[dict]:
         import struct as _struct
