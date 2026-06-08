@@ -197,6 +197,16 @@ class SoloMiniClient:
             _LOGGER.info("Gate opened (timeout, assuming OK) last_cc=%d", current_cc + 1)
             return True
 
+        # Stale packets (e.g. duplicate start_notify copy of StartSession) are 12 bytes;
+        # the real gate response is 16 bytes.  Skip one short packet if needed.
+        if not is_nack(r) and len(r) < 16:
+            try:
+                r = await asyncio.wait_for(self._notify_queue.get(), timeout=RESPONSE_TIMEOUT)
+            except TimeoutError:
+                self.security.last_cc = current_cc + 1
+                _LOGGER.info("Gate opened (timeout after skip) last_cc=%d", current_cc + 1)
+                return True
+
         if is_nack(r):
             # Stored CC is stale — probe to get the current one and retry
             _LOGGER.debug("NACK on last_cc=%d, probing for current CC", current_cc)
@@ -218,8 +228,34 @@ class SoloMiniClient:
                 _LOGGER.info("Gate opened (timeout after probe) last_cc=%d", resp_cc + 1)
                 return True
             new_cc = await self._collect_response(resp_cc, first=r)
+        elif len(r) == 16:
+            resp_cc = extract_response_cc(r)
+            if resp_cc is not None and resp_cc != current_cc + 1:
+                # Device rejected our CC and told us the actual current CC — retry with it
+                _LOGGER.debug(
+                    "CC mismatch: sent %d, device has %d — retrying",
+                    current_cc + 1,
+                    resp_cc,
+                )
+                pkt3 = build_open_command(
+                    self.security.session_key,
+                    self.security.session_id,
+                    resp_cc,
+                    self.security.user_id,
+                    self.action,
+                )
+                await client.write_gatt_char(TX_CHAR_UUID, pkt3, response=True)
+                try:
+                    r = await asyncio.wait_for(self._notify_queue.get(), timeout=RESPONSE_TIMEOUT)
+                except TimeoutError:
+                    self.security.last_cc = resp_cc + 1
+                    _LOGGER.info("Gate opened (timeout after mismatch) last_cc=%d", resp_cc + 1)
+                    return True
+                new_cc = await self._collect_response(resp_cc, first=r)
+            else:
+                new_cc = await self._collect_response(current_cc, first=r)
         else:
-            new_cc = await self._collect_response(current_cc, first=r)
+            new_cc = current_cc + 1
 
         self.security.last_cc = new_cc
         _LOGGER.info("Gate opened! last_cc=%d battery_raw=%s", new_cc, self.security.battery_raw)
