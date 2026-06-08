@@ -78,12 +78,15 @@ class SoloMiniClient:
 
             _LOGGER.debug("Connecting to %s", self.address)
             if self.ble_device is not None:
+                # max_attempts=1: each retry is managed by the caller (open_gate /
+                # get_system_info loop).  Multiple internal attempts register multiple
+                # disconnected_callback instances and cause spurious disconnect events.
                 client = await establish_connection(
                     BleakClientWithServiceCache,
                     self.ble_device,
                     self.address,
                     disconnected_callback=self._on_disconnect,
-                    max_attempts=3,
+                    max_attempts=1,
                 )
             else:
                 client = BleakClient(
@@ -153,23 +156,24 @@ class SoloMiniClient:
         return await self._probe(client, our_sk, our_sid)
 
     async def open_gate(self) -> bool:
-        try:
-            await asyncio.wait_for(self._lock.acquire(), timeout=20.0)
-        except asyncio.TimeoutError:
-            _LOGGER.warning("open_gate timed out waiting for lock")
-            return False
-        try:
-            for attempt in range(3):
-                try:
-                    return await self._do_open()
-                except Exception as e:
-                    _LOGGER.warning("Attempt %d failed: %s", attempt + 1, e)
-                    self._conn = None
-                    if attempt < 2:
-                        await asyncio.sleep(2)
-            return False
-        finally:
-            self._lock.release()
+        for attempt in range(3):
+            # Acquire lock per attempt so queued open_gate calls can interleave
+            # between retries instead of all timing out waiting for a slow retry.
+            try:
+                await asyncio.wait_for(self._lock.acquire(), timeout=20.0)
+            except asyncio.TimeoutError:
+                _LOGGER.warning("open_gate timed out waiting for lock (attempt %d)", attempt + 1)
+                return False
+            try:
+                return await self._do_open()
+            except Exception as e:
+                _LOGGER.warning("Attempt %d failed: %s", attempt + 1, e)
+                self._conn = None
+            finally:
+                self._lock.release()
+            # Brief pause outside the lock — lets queued requests and coordinator run
+            await asyncio.sleep(3)
+        return False
 
     async def _do_open(self) -> bool:
         client = await self._ensure_connected()
